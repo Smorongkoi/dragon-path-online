@@ -652,7 +652,7 @@ function setPayload(payload) {
         : payload.skills[0]?.id ?? null;
     const onlinePlayers = payload.world?.onlinePlayers || [];
     state.selectedOpponentId = payload.pvp?.opponent?.id
-        || (onlinePlayers.some((player) => player.id === state.selectedOpponentId) ? state.selectedOpponentId : onlinePlayers[0]?.id ?? null);
+        || (onlinePlayers.some((player) => player.id === state.selectedOpponentId) ? state.selectedOpponentId : null);
     rememberWorldState(payload.world || {}, false);
     render();
 }
@@ -872,11 +872,11 @@ function renderWorldPanels(world) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = player.id === state.selectedOpponentId ? 'selected' : '';
-            button.textContent = `${element.fullLabel} ${player.name} LV ${player.level} | PVP ${player.pvp_rating}`;
+            button.textContent = `${element.fullLabel} ${player.name} LV ${player.level} | PVP ${player.pvp_rating}${player.pvp_queue_at ? ' | รอประลอง' : ''}`;
             button.style.borderColor = element.color;
             button.addEventListener('click', () => {
                 state.selectedOpponentId = player.id;
-                startPvp(player.id);
+                renderPvpPanel(state.payload.pvp, state.payload.skills || []);
             });
             els.arenaPlayerList.appendChild(button);
         });
@@ -934,16 +934,19 @@ function notifyWorld(message) {
 
 function renderPvpPanel(pvp, skills) {
     const opponent = pvp?.opponent || (state.payload.world?.onlinePlayers || []).find((player) => player.id === state.selectedOpponentId);
+    const queue = state.payload.pvpQueue || {};
     const hp = opponent?.current_hp ?? opponent?.hp ?? 0;
     const maxHp = opponent?.hp ?? opponent?.max_hp ?? 1;
 
     if (els.pvpOpponentName) {
         const element = elementMeta[opponent?.element || 'earth'] || elementMeta.earth;
-        els.pvpOpponentName.textContent = opponent ? `${element.fullLabel} ${opponent.name} LV ${opponent.level}` : 'เลือกคู่ต่อสู้';
+        els.pvpOpponentName.textContent = pvp && opponent
+            ? `${element.fullLabel} ${opponent.name} LV ${opponent.level}`
+            : (queue.waiting ? 'กำลังรอผู้เล่นคนที่ 2' : 'กดเข้าลานเพื่อจับคู่');
         els.pvpOpponentName.style.color = opponent ? element.color : '';
         els.pvpOpponentStats.textContent = opponent
             ? `ATK ${opponent.atk ?? '-'} / DEF ${opponent.def ?? '-'} / Rating ${opponent.pvp_rating ?? '-'}`
-            : 'ผู้เล่นทุกคนบนโลกสู้กันได้';
+            : (queue.waiting ? 'ต้องมีอีกคนกดเข้าลานประลองในช่วงเวลาเดียวกัน' : 'ต้องมีผู้เล่นออนไลน์และกดเข้าลานพร้อมกัน');
         els.pvpOpponentHpText.textContent = opponent ? `${hp}/${maxHp}` : '0/0';
         setBar(els.pvpOpponentHpBar, hp, maxHp);
     }
@@ -964,21 +967,24 @@ function setMode(mode) {
     }
 }
 
-async function startPvp(opponentId = state.selectedOpponentId) {
+async function startPvp() {
     await ensurePayload();
-    if (!opponentId) return;
 
     const { player } = state.payload;
     try {
         const payload = await request(`/game/player/${player.id}/pvp/start`, {
             method: 'POST',
-            body: JSON.stringify({ opponent_id: opponentId }),
+            body: JSON.stringify({}),
         });
         resetBattleReadout();
         state.pvpResolved = false;
         setPayload(payload);
-        setMode('pvp');
-        log(`เข้าสู่ลานประลองกับ ${payload.pvp.opponent.name}`);
+        if (payload.pvp) {
+            setMode('pvp');
+            log(`เข้าสู่ลานประลองกับ ${payload.pvp.opponent.name}`);
+        } else {
+            log('เข้าคิวลานประลองแล้ว รอผู้เล่นอีกคนกดเข้ามาพร้อมกัน');
+        }
     } catch (error) {
         log(error.message);
     }
@@ -1027,11 +1033,17 @@ async function refreshWorld() {
     if (!state.payload?.player) return;
 
     try {
-        const world = await request(`/game/player/${state.payload.player.id}/heartbeat`, { method: 'POST', body: JSON.stringify({}) });
-        state.payload.world = world;
-        rememberWorldState(world, true);
-        renderWorldPanels(world);
-        renderPvpPanel(state.payload.pvp, state.payload.skills || []);
+        const hadPvp = Boolean(state.payload.pvp);
+        const payload = await request('/game/bootstrap', {
+            method: 'POST',
+            body: JSON.stringify({ browserToken }),
+        });
+        setPayload(payload);
+        rememberWorldState(payload.world || {}, true);
+        if (!hadPvp && payload.pvp) {
+            setMode('pvp');
+            log(`จับคู่ลานประลองแล้ว: ${payload.pvp.opponent.name}`);
+        }
     } catch (error) {
         log(error.message);
     }
@@ -1269,10 +1281,7 @@ els.monsterModeButton?.addEventListener('click', () => {
 });
 els.arenaModeButton?.addEventListener('click', () => {
     playSfx('click');
-    setMode('pvp');
-    if (state.selectedOpponentId && !state.payload?.pvp) {
-        startPvp(state.selectedOpponentId);
-    }
+    startPvp();
 });
 els.pvpFightButton?.addEventListener('click', fightPvp);
 els.chatSendButton?.addEventListener('click', sendChat);

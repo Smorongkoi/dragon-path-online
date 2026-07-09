@@ -272,20 +272,72 @@ class GameController extends Controller
 
     public function startPvp(Request $request, Player $player): JsonResponse
     {
-        $data = $request->validate([
-            'opponent_id' => ['required', 'integer', 'exists:players,id'],
+        $request->validate([
+            'opponent_id' => ['nullable', 'integer', 'exists:players,id'],
         ]);
 
-        if ((int) $data['opponent_id'] === $player->id) {
-            return response()->json(['message' => 'You cannot duel yourself.'], 422);
+        $onlineCutoff = now()->subMinutes(5);
+        $queueCutoff = now()->subSeconds(45);
+        Player::where('pvp_queue_at', '<', $queueCutoff)->update(['pvp_queue_at' => null]);
+
+        $player->refresh();
+        if ($player->pvp_match) {
+            $request->session()->put($this->pvpKey($player), $player->pvp_match);
+            $player->forceFill(['last_seen_at' => now()])->save();
+
+            return response()->json($this->gamePayload($request, $player->fresh()));
         }
 
-        $opponent = Player::findOrFail($data['opponent_id']);
-        $pvp = $this->generatePvpEncounter($player->fresh(), $opponent->fresh());
-        $request->session()->put($this->pvpKey($player), $pvp);
-        $player->forceFill(['last_seen_at' => now()])->save();
+        $onlinePlayers = Player::where('id', '!=', $player->id)
+            ->where('last_seen_at', '>=', $onlineCutoff)
+            ->count();
 
-        return response()->json($this->gamePayload($request, $player->fresh()));
+        if ($onlinePlayers < 1) {
+            $player->forceFill([
+                'last_seen_at' => now(),
+                'pvp_queue_at' => null,
+                'pvp_match' => null,
+            ])->save();
+
+            return response()->json(['message' => 'ต้องมีผู้เล่นอื่นออนไลน์ก่อนถึงจะเข้าลานประลองได้'], 422);
+        }
+
+        $opponent = Player::query()
+            ->where('id', '!=', $player->id)
+            ->where('last_seen_at', '>=', $onlineCutoff)
+            ->where('pvp_queue_at', '>=', $queueCutoff)
+            ->orderBy('pvp_queue_at')
+            ->first();
+
+        if (! $opponent) {
+            $player->forceFill([
+                'last_seen_at' => now(),
+                'pvp_queue_at' => now(),
+                'pvp_match' => null,
+            ])->save();
+            $request->session()->forget($this->pvpKey($player));
+
+            return response()->json($this->gamePayload($request, $player->fresh()));
+        }
+
+        $freshPlayer = $player->fresh();
+        $freshOpponent = $opponent->fresh();
+        $pvp = $this->generatePvpEncounter($freshPlayer, $freshOpponent);
+        $opponentPvp = $this->generatePvpEncounter($freshOpponent, $freshPlayer);
+
+        $freshPlayer->forceFill([
+            'last_seen_at' => now(),
+            'pvp_queue_at' => null,
+            'pvp_match' => $pvp,
+        ])->save();
+        $freshOpponent->forceFill([
+            'pvp_queue_at' => null,
+            'pvp_match' => $opponentPvp,
+        ])->save();
+
+        $request->session()->put($this->pvpKey($player), $pvp);
+
+        return response()->json($this->gamePayload($request, $freshPlayer->fresh()));
     }
 
     public function fightPvp(Request $request, Player $player): JsonResponse
@@ -296,9 +348,9 @@ class GameController extends Controller
             'opponent_dice' => ['nullable', 'integer', 'between:1,6'],
         ]);
 
-        $pvp = $request->session()->get($this->pvpKey($player));
+        $pvp = $request->session()->get($this->pvpKey($player)) ?? $player->pvp_match;
         if (! $pvp) {
-            return response()->json(['message' => 'Enter the arena and choose an opponent first.'], 422);
+            return response()->json(['message' => 'ต้องเข้าคิวและจับคู่ลานประลองก่อน'], 422);
         }
 
         $skill = $this->classSkill($player, $data['skill_id'] ?? null);
@@ -384,8 +436,13 @@ class GameController extends Controller
         if ($won || $lost) {
             $this->recordPvpResult($player, (int) $pvp['opponent']['id'], $won);
             $request->session()->forget($this->pvpKey($player));
+            Player::whereIn('id', [$player->id, (int) $pvp['opponent']['id']])->update([
+                'pvp_queue_at' => null,
+                'pvp_match' => null,
+            ]);
         } else {
             $request->session()->put($this->pvpKey($player), $pvp);
+            $player->forceFill(['pvp_match' => $pvp])->save();
         }
 
         $player->forceFill([
@@ -396,6 +453,7 @@ class GameController extends Controller
             'atk' => $stats['atk'],
             'def' => $stats['def'],
             'last_seen_at' => now(),
+            'pvp_queue_at' => null,
         ])->save();
 
         return response()->json([
@@ -447,7 +505,10 @@ class GameController extends Controller
     {
         $skillClassIds = [$player->class_id];
         $encounter = $request->session()->get($this->encounterKey($player));
-        $pvp = $request->session()->get($this->pvpKey($player));
+        $pvp = $request->session()->get($this->pvpKey($player)) ?? $player->pvp_match;
+        if ($pvp) {
+            $request->session()->put($this->pvpKey($player), $pvp);
+        }
 
         return [
             'player' => $player,
@@ -462,6 +523,11 @@ class GameController extends Controller
                 ->values(),
             'encounter' => $encounter,
             'pvp' => $pvp,
+            'pvpQueue' => [
+                'waiting' => $player->pvp_queue_at !== null && ! $pvp,
+                'joinedAt' => $player->pvp_queue_at?->toIso8601String(),
+                'windowSeconds' => 45,
+            ],
             'world' => $this->worldPayload($player),
             'csrfToken' => csrf_token(),
         ];
@@ -475,7 +541,7 @@ class GameController extends Controller
             'totalPlayers' => Player::count(),
             'onlineCount' => Player::where('last_seen_at', '>=', $onlineCutoff)->count(),
             'onlinePlayers' => Player::query()
-                ->select(['id', 'name', 'level', 'class_id', 'element', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'last_seen_at'])
+                ->select(['id', 'name', 'level', 'class_id', 'element', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'pvp_queue_at', 'last_seen_at'])
                 ->where('last_seen_at', '>=', $onlineCutoff)
                 ->when($currentPlayer, fn ($query) => $query->where('id', '!=', $currentPlayer->id))
                 ->orderByDesc('level')

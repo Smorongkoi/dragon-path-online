@@ -413,10 +413,12 @@ class GameFlowTest extends TestCase
             ->assertJsonPath('onlineCount', 2)
             ->assertJsonPath('chatMessages.0.message', 'hello world');
 
-        $this->postJson("/game/player/{$heroId}/pvp/start", [
-            'opponent_id' => $rivalId,
-        ])->assertOk()
-            ->assertJsonPath('pvp.opponent.name', 'Rival');
+        $this->postJson("/game/player/{$heroId}/pvp/start", [])->assertOk()
+            ->assertJsonPath('pvp', null)
+            ->assertJsonPath('pvpQueue.waiting', true);
+
+        $this->postJson("/game/player/{$rivalId}/pvp/start", [])->assertOk()
+            ->assertJsonPath('pvp.opponent.name', 'Hero');
 
         $fight = null;
         for ($i = 0; $i < 12; $i++) {
@@ -434,5 +436,21 @@ class GameFlowTest extends TestCase
         $fight->assertJsonPath('pvpBattle.won', true);
         $this->assertGreaterThan(1000, Player::find($heroId)->pvp_rating);
         $this->assertGreaterThan(0, Player::find($heroId)->pvp_wins);
+    }
+
+    public function test_pvp_arena_requires_another_online_player(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $hero = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'solo-pvp-token',
+            'name' => 'Solo',
+        ])->assertOk();
+
+        $heroId = $hero->json('player.id');
+
+        $this->postJson("/game/player/{$heroId}/pvp/start", [])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'ต้องมีผู้เล่นอื่นออนไลน์ก่อนถึงจะเข้าลานประลองได้');
     }
 }

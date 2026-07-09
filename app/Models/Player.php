@@ -28,6 +28,8 @@ class Player extends Model
         'pvp_losses',
         'pvp_rating',
         'last_seen_at',
+        'pvp_queue_at',
+        'pvp_match',
         'inventory',
         'class_history',
     ];
@@ -36,5 +38,7 @@ class Player extends Model
         'inventory' => 'array',
         'class_history' => 'array',
         'last_seen_at' => 'datetime',
+        'pvp_queue_at' => 'datetime',
+        'pvp_match' => 'array',
     ];
 }

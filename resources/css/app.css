@@ -645,8 +645,13 @@ input {
 
 .chat-form {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr 56px;
     gap: 8px;
+}
+
+.chat-form button {
+    min-width: 56px;
+    padding: 0;
 }
 
 body.status-hidden .hud {
@@ -719,5 +724,301 @@ body.menu-hidden .lower-layout {
 
     .bar-row b {
         grid-column: 2;
+    }
+}
+
+/* Game HUD pass: keep the playfield clear and move controls to game-like docks. */
+body {
+    background:
+        radial-gradient(circle at 50% 12%, rgba(255, 209, 102, 0.18), transparent 32%),
+        linear-gradient(180deg, #17264a 0%, #101827 54%, #0f1f19 100%);
+}
+
+button {
+    border-color: rgba(125, 211, 252, 0.35);
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.94));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+button:hover,
+button.selected {
+    border-color: #facc15;
+    background: linear-gradient(180deg, #245b46, #143f31);
+}
+
+.topbar {
+    top: 10px;
+    left: 18px;
+    right: 18px;
+    align-items: start;
+}
+
+.topbar h1 {
+    font-size: clamp(28px, 3.2vw, 52px);
+    line-height: 1;
+    text-shadow: 0 5px 18px rgba(0, 0, 0, 0.35);
+}
+
+.top-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 760px;
+}
+
+.save-pill,
+.top-actions button {
+    min-height: 38px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(10px);
+}
+
+.mode-switch {
+    top: 104px;
+    left: 50%;
+    z-index: 24;
+    padding: 6px;
+    border: 1px solid rgba(125, 211, 252, 0.25);
+    border-radius: 14px;
+    background: rgba(8, 13, 23, 0.62);
+    backdrop-filter: blur(12px);
+}
+
+.mode-switch button {
+    min-height: 50px;
+    min-width: 190px;
+    border-radius: 10px;
+    font-weight: 800;
+}
+
+.hud {
+    top: 104px;
+    bottom: 18px;
+    left: 18px;
+    width: 330px;
+    max-height: calc(100vh - 122px);
+    overflow: hidden;
+}
+
+.hero-panel,
+.bars,
+.log-panel,
+.world-panel-card {
+    background: rgba(10, 16, 28, 0.78);
+    border-color: rgba(125, 211, 252, 0.22);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(10px);
+}
+
+.hero-panel {
+    grid-template-columns: 76px 1fr;
+    padding: 12px;
+}
+
+.avatar-badge {
+    width: 72px;
+    background: linear-gradient(180deg, #2563eb, #17406d);
+    box-shadow: 0 0 28px rgba(56, 189, 248, 0.24);
+}
+
+.name-row {
+    grid-template-columns: 1fr;
+}
+
+.name-row button {
+    min-height: 34px;
+}
+
+.evolution-strip {
+    margin: 8px 0;
+    padding: 8px 0;
+}
+
+.stat-grid span {
+    background: rgba(15, 23, 42, 0.72);
+    border-radius: 10px;
+}
+
+.battle-layout {
+    z-index: 1;
+}
+
+.canvas-wrap {
+    inset: 0;
+    background: #101827;
+}
+
+.command-panel {
+    left: 370px;
+    right: 370px;
+    top: auto;
+    bottom: 18px;
+    width: auto;
+    min-height: 104px;
+    transform: none;
+    align-items: stretch;
+    justify-content: center;
+    border-radius: 14px;
+    background: rgba(7, 12, 22, 0.82);
+    border-color: rgba(250, 204, 21, 0.22);
+}
+
+.command-panel .world-panel,
+.command-panel .battle-panel,
+[data-mode="pvp"] .command-panel .pvp-panel {
+    width: 100%;
+    justify-content: center;
+}
+
+.command-panel .primary-action,
+.command-panel #fight-button,
+.command-panel #pvp-fight-button {
+    flex: 0 0 190px;
+    min-height: 72px;
+    font-size: 20px;
+    background: linear-gradient(180deg, #22c55e, #166534);
+    border-color: #86efac;
+}
+
+.command-panel .dice-board {
+    flex: 0 1 240px;
+}
+
+.command-panel .dice-card {
+    min-width: 94px;
+    background: rgba(15, 23, 42, 0.9);
+}
+
+[data-mode="battle"] .command-panel,
+[data-mode="pvp"] .command-panel {
+    width: auto;
+}
+
+[data-mode="battle"] .command-panel .battle-info-panel {
+    flex: 0 1 260px;
+}
+
+[data-mode="battle"] .command-panel .battle-panel .button-list {
+    max-width: 320px;
+}
+
+[data-mode="battle"] .command-panel .battle-panel .button-list button {
+    min-width: 100px;
+    min-height: 54px;
+}
+
+[data-mode="pvp"] #arena-player-list {
+    max-width: 520px;
+}
+
+.lower-layout {
+    top: 104px;
+    right: 18px;
+    bottom: 18px;
+    left: auto;
+    width: 330px;
+    max-height: calc(100vh - 122px);
+    overflow: hidden;
+}
+
+#battle-log {
+    max-height: 132px;
+}
+
+.rank-list {
+    max-height: 132px;
+}
+
+.chat-list {
+    max-height: 190px;
+}
+
+.bar {
+    height: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bar i {
+    box-shadow: 0 0 16px currentColor;
+}
+
+.bar.exp i {
+    background: linear-gradient(90deg, #facc15, #fb923c);
+}
+
+.bar.mp i {
+    background: linear-gradient(90deg, #38bdf8, #6366f1);
+}
+
+.bar i,
+.bar.monster i {
+    background: linear-gradient(90deg, #fb7185, #ef4444);
+}
+
+body.menu-hidden .command-panel {
+    display: none;
+}
+
+@media (max-width: 1120px) {
+    .hud,
+    .lower-layout {
+        width: 290px;
+    }
+
+    .command-panel {
+        left: 318px;
+        right: 318px;
+    }
+
+    .mode-switch {
+        top: 92px;
+    }
+}
+
+@media (max-width: 860px) {
+    body {
+        overflow: auto;
+    }
+
+    .game-shell {
+        min-height: 100vh;
+        height: auto;
+        overflow: visible;
+    }
+
+    .topbar,
+    .mode-switch,
+    .hud,
+    .command-panel,
+    .lower-layout {
+        position: relative;
+        inset: auto;
+        left: auto;
+        right: auto;
+        top: auto;
+        bottom: auto;
+        width: auto;
+        max-width: none;
+        margin: 10px 12px;
+        transform: none;
+    }
+
+    .battle-layout {
+        position: relative;
+        height: 68vh;
+        min-height: 460px;
+    }
+
+    .canvas-wrap {
+        position: absolute;
+    }
+
+    .command-panel {
+        flex-wrap: wrap;
+        min-height: auto;
+    }
+
+    .lower-layout {
+        overflow: visible;
     }
 }

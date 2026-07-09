@@ -17,6 +17,7 @@
             <div class="top-actions">
                 <button id="toggle-status-button" type="button">ข้อมูล</button>
                 <button id="toggle-menu-button" type="button">คำสั่ง</button>
+                <button id="sound-toggle-button" type="button">เสียง: เปิด</button>
                 <div class="save-pill" id="total-players-text">ผู้เล่นทั้งหมด 0</div>
                 <div class="save-pill" id="online-players-text">ออนไลน์ 0</div>
                 <div class="save-pill" id="save-status">Loading</div>

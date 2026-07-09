@@ -32,6 +32,7 @@ const els = {
     saveStatus: document.getElementById('save-status'),
     toggleStatusButton: document.getElementById('toggle-status-button'),
     toggleMenuButton: document.getElementById('toggle-menu-button'),
+    soundToggleButton: document.getElementById('sound-toggle-button'),
     modeRoot: document.getElementById('mode-root'),
     playerName: document.getElementById('player-name'),
     renameButton: document.getElementById('rename-button'),
@@ -87,6 +88,109 @@ const els = {
     totalPlayersText: document.getElementById('total-players-text'),
     onlinePlayersText: document.getElementById('online-players-text'),
 };
+
+const audio = {
+    ctx: null,
+    enabled: localStorage.getItem('dragon-path-audio') !== 'off',
+    bgmNodes: [],
+};
+
+function ensureAudio() {
+    if (!audio.enabled) return;
+
+    if (!audio.ctx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        audio.ctx = new AudioContext();
+    }
+
+    if (audio.ctx.state === 'suspended') {
+        audio.ctx.resume();
+    }
+
+    if (audio.bgmNodes.length === 0) {
+        startBgm();
+    }
+}
+
+function startBgm() {
+    if (!audio.ctx || audio.bgmNodes.length > 0) return;
+
+    const master = audio.ctx.createGain();
+    master.gain.value = 0.045;
+    master.connect(audio.ctx.destination);
+
+    [146.83, 220, 293.66].forEach((freq, index) => {
+        const osc = audio.ctx.createOscillator();
+        const gain = audio.ctx.createGain();
+        osc.type = index === 1 ? 'triangle' : 'sine';
+        osc.frequency.value = freq;
+        gain.gain.value = index === 1 ? 0.22 : 0.16;
+        osc.connect(gain).connect(master);
+        osc.start();
+        audio.bgmNodes.push(osc, gain);
+    });
+
+    audio.bgmNodes.push(master);
+}
+
+function stopBgm() {
+    audio.bgmNodes.forEach((node) => {
+        if (typeof node.stop === 'function') {
+            try {
+                node.stop();
+            } catch {
+                // Already stopped.
+            }
+        }
+        if (typeof node.disconnect === 'function') {
+            node.disconnect();
+        }
+    });
+    audio.bgmNodes = [];
+}
+
+function setSoundEnabled(enabled) {
+    audio.enabled = enabled;
+    localStorage.setItem('dragon-path-audio', enabled ? 'on' : 'off');
+    if (els.soundToggleButton) {
+        els.soundToggleButton.textContent = enabled ? 'เสียง: เปิด' : 'เสียง: ปิด';
+        els.soundToggleButton.classList.toggle('selected', enabled);
+    }
+    if (enabled) {
+        ensureAudio();
+    } else {
+        stopBgm();
+    }
+}
+
+function playSfx(type = 'click') {
+    if (!audio.enabled) return;
+    ensureAudio();
+    if (!audio.ctx) return;
+
+    const now = audio.ctx.currentTime;
+    const osc = audio.ctx.createOscillator();
+    const gain = audio.ctx.createGain();
+    const presets = {
+        click: [420, 0.035, 'triangle', 0.045],
+        explore: [520, 0.14, 'sine', 0.07],
+        hit: [110, 0.12, 'sawtooth', 0.09],
+        crit: [760, 0.18, 'square', 0.08],
+        victory: [660, 0.3, 'triangle', 0.1],
+        chat: [880, 0.09, 'sine', 0.05],
+    };
+    const [freq, length, wave, volume] = presets[type] || presets.click;
+
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(70, freq * 0.55), now + length);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + length);
+    osc.connect(gain).connect(audio.ctx.destination);
+    osc.start(now);
+    osc.stop(now + length);
+}
 
 class BattleScene extends Phaser.Scene {
     constructor() {
@@ -276,6 +380,195 @@ class BattleScene extends Phaser.Scene {
         });
     }
 }
+
+BattleScene.prototype.createPlayerTexture = function createPlayerTexture() {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x1d4ed8, 1);
+    g.fillRoundedRect(22, 34, 44, 48, 10);
+    g.fillStyle(0xf3c98b, 1);
+    g.fillCircle(44, 23, 19);
+    g.fillStyle(0x172554, 1);
+    g.fillRoundedRect(25, 8, 38, 16, 8);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(37, 21, 4);
+    g.fillCircle(51, 21, 4);
+    g.fillStyle(0x0f172a, 1);
+    g.fillCircle(38, 21, 2);
+    g.fillCircle(52, 21, 2);
+    g.lineStyle(7, 0xd9e7ff, 1);
+    g.lineBetween(68, 35, 92, 14);
+    g.lineStyle(4, 0x38bdf8, 1);
+    g.lineBetween(68, 36, 90, 16);
+    g.fillStyle(0x172554, 1);
+    g.fillRoundedRect(26, 80, 13, 24, 5);
+    g.fillRoundedRect(51, 80, 13, 24, 5);
+    g.fillStyle(0x60a5fa, 1);
+    g.fillCircle(21, 53, 10);
+    g.fillCircle(68, 53, 10);
+    g.generateTexture('playerTex', 112, 112);
+    g.destroy();
+};
+
+BattleScene.prototype.createMonsterTexture = function createMonsterTexture(key, fill, accent, type = 'slime') {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(fill, 1);
+    if (type === 'bat') {
+        g.fillTriangle(12, 44, 42, 18, 42, 62);
+        g.fillTriangle(116, 44, 86, 18, 86, 62);
+        g.fillRoundedRect(42, 22, 44, 58, 18);
+    } else if (type === 'wolf') {
+        g.fillRoundedRect(26, 34, 76, 42, 14);
+        g.fillTriangle(38, 34, 48, 10, 58, 36);
+        g.fillTriangle(78, 34, 90, 10, 94, 38);
+        g.fillRect(36, 72, 13, 26);
+        g.fillRect(82, 72, 13, 26);
+    } else if (type === 'skeleton') {
+        g.fillCircle(64, 26, 24);
+        g.fillRoundedRect(42, 52, 44, 44, 8);
+        g.lineStyle(6, fill, 1);
+        g.lineBetween(28, 60, 12, 88);
+        g.lineBetween(100, 60, 116, 88);
+    } else if (type === 'golem') {
+        g.fillRoundedRect(28, 18, 72, 76, 12);
+        g.fillStyle(accent, 1);
+        g.fillRoundedRect(40, 28, 48, 18, 6);
+        g.fillStyle(fill, 1);
+        g.fillRect(16, 48, 18, 42);
+        g.fillRect(96, 48, 18, 42);
+    } else if (type === 'wyvern') {
+        g.fillTriangle(18, 44, 58, 12, 52, 66);
+        g.fillTriangle(110, 44, 70, 12, 76, 66);
+        g.fillRoundedRect(46, 28, 38, 58, 18);
+        g.fillTriangle(62, 18, 76, 0, 82, 24);
+    } else {
+        g.fillEllipse(64, 64, 86, 66);
+        g.fillCircle(64, 38, 34);
+    }
+    g.fillStyle(accent, 1);
+    g.fillCircle(52, 42, 5);
+    g.fillCircle(76, 42, 5);
+    g.lineStyle(4, accent, 1);
+    g.lineBetween(52, 64, 76, 64);
+    g.generateTexture(key, 128, 112);
+    g.destroy();
+};
+
+BattleScene.prototype.createSceneLayers = function createSceneLayers() {
+    this.bg = this.add.rectangle(400, 250, 800, 500, 0x7dd3fc);
+    this.sun = this.add.circle(170, 130, 58, 0xffd166, 0.72);
+    this.mountainBack = this.add.triangle(320, 278, 0, 150, 210, 20, 420, 150, 0x5b8fb9, 0.78);
+    this.mountainFront = this.add.triangle(540, 288, 0, 160, 240, 16, 480, 160, 0x3f6f8f, 0.88);
+    this.clouds = [
+        this.add.ellipse(260, 138, 170, 42, 0xffffff, 0.45),
+        this.add.ellipse(760, 112, 220, 48, 0xffffff, 0.36),
+    ];
+    this.trees = [];
+    for (let i = 0; i < 11; i++) {
+        const x = 70 + i * 150;
+        this.trees.push(this.add.rectangle(x, 388, 18, 72, 0x6b3f1d));
+        this.trees.push(this.add.triangle(x, 326, 0, 78, 50, 0, 100, 78, 0x166534));
+    }
+    this.ground = this.add.rectangle(400, 380, 800, 150, 0x2f8f46).setAlpha(0.98);
+    this.path = this.add.ellipse(410, 426, 620, 100, 0xcfa968, 0.7);
+    this.dungeonGlow = this.add.rectangle(400, 250, 800, 500, 0x090a12, 0).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.torches = [
+        this.add.circle(120, 260, 18, 0xffa02b, 0),
+        this.add.circle(680, 260, 18, 0xffa02b, 0),
+    ];
+    this.titleText = this.add.text(28, 94, 'แผนที่โลก', {
+        fontFamily: 'Arial',
+        fontSize: '22px',
+        fontStyle: 'bold',
+        color: '#f8fafc',
+        stroke: '#0f172a',
+        strokeThickness: 5,
+    });
+};
+
+BattleScene.prototype.create = function createGameScene() {
+    state.scene = this;
+    this.createPlayerTexture();
+    this.createMonsterTexture('monster_slime', 0x65d46e, 0x173f21, 'slime');
+    this.createMonsterTexture('monster_bat', 0x9b7cff, 0x231642, 'bat');
+    this.createMonsterTexture('monster_wolf', 0xb9b0a2, 0x2f2b26, 'wolf');
+    this.createMonsterTexture('monster_skeleton', 0xe8e1cb, 0x363124, 'skeleton');
+    this.createMonsterTexture('monster_golem', 0x8e9a9d, 0x2d3436, 'golem');
+    this.createMonsterTexture('monster_wyvern', 0xe76f51, 0x4a1f18, 'wyvern');
+    this.createMonsterTexture('monster_default', 0xff6464, 0x2f1515, 'slime');
+    this.createSceneLayers();
+    this.playerShadow = this.add.ellipse(230, 374, 128, 26, 0x000000, 0.22);
+    this.monsterShadow = this.add.ellipse(570, 374, 142, 28, 0x000000, 0.26);
+    this.player = this.add.sprite(230, 310, 'playerTex').setScale(2.1);
+    this.monster = this.add.sprite(570, 300, 'monster_default').setScale(2.25);
+    this.monsterName = this.add.text(500, 385, 'Monster', {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        stroke: '#111827',
+        strokeThickness: 4,
+    });
+    this.monster.setVisible(false);
+    this.monsterShadow.setVisible(false);
+    this.monsterName.setVisible(false);
+    this.tweens.add({ targets: this.player, y: '+=8', duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: this.monster, y: '+=10', duration: 920, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: this.clouds, x: '+=28', duration: 9000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.scale.on('resize', this.resizeScene, this);
+    this.resizeScene({ width: this.scale.width, height: this.scale.height });
+    this.setMode('world');
+};
+
+BattleScene.prototype.setMode = function setGameSceneMode(mode) {
+    const isWorld = mode === 'world';
+    this.bg.setFillStyle(isWorld ? 0x7dd3fc : 0x101827);
+    this.ground.setFillStyle(isWorld ? 0x2f8f46 : 0x20212d).setAlpha(isWorld ? 0.98 : 0.96);
+    this.sun.setFillStyle(isWorld ? 0xffd166 : 0x6d597a, isWorld ? 0.72 : 0.28);
+    this.path.setVisible(isWorld);
+    this.mountainBack.setFillStyle(isWorld ? 0x5b8fb9 : 0x252a40, isWorld ? 0.78 : 0.55);
+    this.mountainFront.setFillStyle(isWorld ? 0x3f6f8f : 0x181f32, isWorld ? 0.88 : 0.75);
+    this.clouds.forEach((cloud) => cloud.setVisible(isWorld));
+    this.trees.forEach((tree) => tree.setVisible(isWorld));
+    this.dungeonGlow.setAlpha(isWorld ? 0 : 0.48);
+    this.torches.forEach((torch) => torch.setAlpha(isWorld ? 0 : 0.75));
+    this.titleText.setText(isWorld ? 'แผนที่โลก' : 'ดันเจี้ยน');
+    this.monster.setVisible(!isWorld);
+    this.monsterShadow.setVisible(!isWorld);
+    this.monsterName.setVisible(!isWorld);
+    this.resizeScene({ width: this.scale.width, height: this.scale.height });
+};
+
+BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
+    const width = gameSize.width || 800;
+    const height = gameSize.height || 500;
+    const groundY = height * 0.68;
+    const playerX = width * 0.38;
+    const monsterX = width * 0.62;
+    const actorY = groundY - 72;
+
+    this.bg.setPosition(width / 2, height / 2).setSize(width, height);
+    this.ground.setPosition(width / 2, groundY + 90).setSize(width, Math.max(230, height * 0.34));
+    this.sun.setPosition(width * 0.18, height * 0.2);
+    this.mountainBack.setPosition(width * 0.35, groundY - 150).setScale(Math.max(1.2, width / 900), 1.2);
+    this.mountainFront.setPosition(width * 0.63, groundY - 135).setScale(Math.max(1.15, width / 950), 1.15);
+    this.clouds[0].setPosition(width * 0.28, height * 0.2);
+    this.clouds[1].setPosition(width * 0.72, height * 0.16);
+    this.trees.forEach((tree, index) => {
+        const pair = Math.floor(index / 2);
+        const x = ((pair * 160) % (width + 220)) - 80;
+        tree.setPosition(x, index % 2 === 0 ? groundY + 28 : groundY - 24);
+    });
+    this.path.setPosition(width / 2, groundY + 68).setSize(width * 0.46, Math.max(82, height * 0.11));
+    this.dungeonGlow.setPosition(width / 2, height / 2).setSize(width, height);
+    this.torches[0].setPosition(width * 0.26, groundY - 84);
+    this.torches[1].setPosition(width * 0.74, groundY - 84);
+    this.titleText.setPosition(Math.max(350, width * 0.28), 172);
+    this.playerShadow.setPosition(playerX, actorY + 88);
+    this.monsterShadow.setPosition(monsterX, actorY + 88);
+    this.player.setPosition(playerX, actorY);
+    this.monster.setPosition(monsterX, actorY);
+    this.monsterName.setPosition(monsterX - 70, actorY + 96);
+};
 
 new Phaser.Game({
     type: Phaser.AUTO,
@@ -583,6 +876,7 @@ function rememberWorldState(world, notify = true) {
 function notifyWorld(message) {
     log(message);
     state.scene?.showSpeech(message, 'monster');
+    playSfx('chat');
 }
 
 function renderPvpPanel(pvp, skills) {
@@ -662,12 +956,14 @@ function showPvpBattle(battle) {
         window.setTimeout(() => {
             const actor = turn.actor === 'player' ? 'player' : 'monster';
             state.scene?.playHit(actor, turn.damage, turn.effect);
+            playSfx(turn.effect === 'x2' || turn.effect === 'critical' ? 'crit' : 'hit');
             log(turn.text);
         }, index * 180);
     });
 
     if (battle.won || battle.lost) {
         log(`${battle.won ? 'ชนะ PVP' : 'แพ้ PVP'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
+        playSfx(battle.won ? 'victory' : 'hit');
         window.setTimeout(() => refreshWorld(), 800);
     }
 }
@@ -706,6 +1002,7 @@ async function sendChat() {
         state.payload.world = world;
         rememberWorldState(world, true);
         renderWorldPanels(world);
+        playSfx('chat');
     } catch (error) {
         log(error.message);
     }
@@ -727,6 +1024,7 @@ async function fight() {
     if (!state.selectedMonsterId) return;
     els.fightButton.disabled = true;
     try {
+        playSfx('click');
         const payload = await request(`/game/player/${player.id}/fight`, {
             method: 'POST',
             body: JSON.stringify({
@@ -749,6 +1047,7 @@ async function rollEncounter() {
     const { player } = state.payload;
     els.rollEncounterButton.disabled = true;
     try {
+        playSfx('explore');
         const payload = await request(`/game/player/${player.id}/roll-encounter`, {
             method: 'POST',
             body: JSON.stringify({}),
@@ -816,6 +1115,7 @@ function showBattle(battle) {
     battle.turns.slice(-4).forEach((turn, index) => {
         window.setTimeout(() => {
             state.scene?.playHit(turn.actor, turn.damage, turn.effect);
+            playSfx(turn.effect === 'x2' || turn.effect === 'critical' ? 'crit' : 'hit');
             log(turn.text);
         }, index * 180);
     });
@@ -834,6 +1134,7 @@ function showBattle(battle) {
     window.setTimeout(() => {
         state.mode = 'world';
         render();
+        if (battle.won) playSfx('victory');
         log('กลับสู่แผนที่โลกแล้ว กดสำรวจแผนที่เพื่อไปต่อ');
     }, battle.won ? 1900 : 900);
 }
@@ -884,13 +1185,19 @@ function log(message) {
 
 els.renameButton.addEventListener('click', rename);
 els.toggleStatusButton.addEventListener('click', () => {
+    playSfx('click');
     document.body.classList.toggle('status-hidden');
 });
 els.toggleMenuButton.addEventListener('click', () => {
+    playSfx('click');
     document.body.classList.toggle('menu-hidden');
 });
-els.monsterModeButton?.addEventListener('click', () => setMode('world'));
+els.monsterModeButton?.addEventListener('click', () => {
+    playSfx('click');
+    setMode('world');
+});
 els.arenaModeButton?.addEventListener('click', () => {
+    playSfx('click');
     setMode('pvp');
     if (state.selectedOpponentId && !state.payload?.pvp) {
         startPvp(state.selectedOpponentId);
@@ -903,6 +1210,9 @@ els.chatInput?.addEventListener('keydown', (event) => {
         sendChat();
     }
 });
+els.soundToggleButton?.addEventListener('click', () => setSoundEnabled(!audio.enabled));
+document.addEventListener('pointerdown', ensureAudio, { once: true });
+setSoundEnabled(audio.enabled);
 window.rollEncounterAction = rollEncounter;
 window.fightAction = fight;
 bootstrap().catch((error) => log(error.message));

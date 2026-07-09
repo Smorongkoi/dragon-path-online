@@ -242,6 +242,51 @@ input {
     font-size: 13px;
 }
 
+.element-strip {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.element-strip strong {
+    color: #d8e9ff;
+    font-size: 14px;
+}
+
+.element-choices {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.element-choice {
+    min-height: 34px;
+    padding: 0 6px;
+    border-width: 2px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.element-earth {
+    background: linear-gradient(180deg, rgba(146, 64, 14, 0.88), rgba(67, 34, 18, 0.92));
+}
+
+.element-water {
+    background: linear-gradient(180deg, rgba(14, 116, 144, 0.88), rgba(12, 74, 110, 0.92));
+}
+
+.element-wind {
+    background: linear-gradient(180deg, rgba(22, 101, 52, 0.88), rgba(20, 83, 45, 0.92));
+}
+
+.element-fire {
+    background: linear-gradient(180deg, rgba(185, 28, 28, 0.9), rgba(127, 29, 29, 0.94));
+}
+
+.element-choice.selected {
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22), 0 0 18px rgba(250, 204, 21, 0.18);
+}
+
 .bars {
     display: grid;
     gap: 12px;

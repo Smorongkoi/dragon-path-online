@@ -11,6 +11,7 @@ class Player extends Model
         'name',
         'level',
         'class_id',
+        'element',
         'exp',
         'hp',
         'max_hp',

@@ -119,6 +119,42 @@ class GameFlowTest extends TestCase
             ->assertJsonPath('battle.turns.1.multiplier', 2);
     }
 
+    public function test_player_can_choose_element_and_gain_element_advantage(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $bootstrap = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'element-token',
+            'name' => 'Element Tester',
+        ])->assertOk();
+
+        $playerId = $bootstrap->json('player.id');
+
+        $this->patchJson("/game/player/{$playerId}/element", [
+            'element' => 'earth',
+        ])->assertOk()
+            ->assertJsonPath('player.element', 'earth');
+
+        $this->postJson("/game/player/{$playerId}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 1,
+            'monster_element' => 'water',
+        ])->assertOk()
+            ->assertJsonPath('encounter.monsters.0.element', 'water')
+            ->assertJsonPath('encounter.monsters.0.element_label', 'ธาตุน้ำ');
+
+        $fight = $this->postJson("/game/player/{$playerId}/fight", [
+            'skill_id' => 'punch',
+            'dice' => 3,
+            'monster_dice' => 1,
+        ]);
+
+        $fight->assertOk()
+            ->assertJsonPath('battle.turns.0.element.attacker', 'earth')
+            ->assertJsonPath('battle.turns.0.element.defender', 'water')
+            ->assertJsonPath('battle.turns.0.elementMultiplier', 1.5);
+    }
+
     public function test_current_class_skill_is_used_in_combat(): void
     {
         $this->seed(GameSeedSeeder::class);

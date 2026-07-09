@@ -43,6 +43,10 @@
                         <div id="class-choices" class="button-list"></div>
                     </div>
                     <p id="class-name">Class: คนปกติ</p>
+                    <div class="element-strip">
+                        <strong>ธาตุผู้เล่น</strong>
+                        <div id="element-choices" class="element-choices"></div>
+                    </div>
                     <div class="stat-grid">
                         <span id="level-text">LV 1</span>
                         <span id="atk-text">ATK 10</span>

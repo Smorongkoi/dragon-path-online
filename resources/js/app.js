@@ -73,6 +73,7 @@ const els = {
     battleLog: document.getElementById('battle-log'),
     evolutionNote: document.getElementById('evolution-note'),
     classChoices: document.getElementById('class-choices'),
+    elementChoices: document.getElementById('element-choices'),
     monsterModeButton: document.getElementById('monster-mode-button'),
     arenaModeButton: document.getElementById('arena-mode-button'),
     arenaPlayerList: document.getElementById('arena-player-list'),
@@ -87,6 +88,14 @@ const els = {
     chatSendButton: document.getElementById('chat-send-button'),
     totalPlayersText: document.getElementById('total-players-text'),
     onlinePlayersText: document.getElementById('online-players-text'),
+};
+
+const elementMeta = {
+    earth: { label: 'ดิน', fullLabel: 'ธาตุดิน', color: '#92400e' },
+    water: { label: 'น้ำ', fullLabel: 'ธาตุน้ำ', color: '#38bdf8' },
+    wind: { label: 'ลม', fullLabel: 'ธาตุลม', color: '#22c55e' },
+    fire: { label: 'ไฟ', fullLabel: 'ธาตุไฟ', color: '#ef4444' },
+    neutral: { label: 'ไร้ธาตุ', fullLabel: 'ไร้ธาตุ', color: '#94a3b8' },
 };
 
 const audio = {
@@ -239,9 +248,11 @@ class BattleScene extends Phaser.Scene {
     setMonster(monster) {
         if (!monster || !this.monsterName) return;
         const textureKey = `monster_${monster.sprite_key || 'default'}`;
+        const element = elementMeta[monster.element || 'neutral'] || elementMeta.neutral;
         this.monster.setTexture(this.textures.exists(textureKey) ? textureKey : 'monster_default');
         this.monster.setAlpha(1).setAngle(0).setScale(2.4).setY(300);
-        this.monsterName.setText(`${monster.name} LV ${monster.level}`);
+        this.monsterName.setText(`${element.fullLabel} ${monster.name} LV ${monster.level}`);
+        this.monsterName.setColor(element.color);
         this.resizeScene({ width: this.scale.width, height: this.scale.height });
     }
 
@@ -507,7 +518,7 @@ BattleScene.prototype.create = function createGameScene() {
         color: '#ffffff',
         stroke: '#111827',
         strokeThickness: 4,
-    });
+    }).setOrigin(0.5).setPadding(10, 5, 10, 5).setBackgroundColor('rgba(8, 13, 23, 0.72)');
     this.monster.setVisible(false);
     this.monsterShadow.setVisible(false);
     this.monsterName.setVisible(false);
@@ -567,7 +578,7 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     this.monsterShadow.setPosition(monsterX, actorY + 88);
     this.player.setPosition(playerX, actorY);
     this.monster.setPosition(monsterX, actorY);
-    this.monsterName.setPosition(monsterX - 70, actorY + 96);
+    this.monsterName.setPosition(monsterX, actorY - 150);
 };
 
 new Phaser.Game({
@@ -654,6 +665,7 @@ function render() {
     els.playerName.value = player.name;
     els.classBadge.textContent = (currentClass?.name || 'คน').slice(0, 2);
     els.className.textContent = `Class: ${currentClass?.name || player.class_id}`;
+    renderElementChoices(player.element || 'earth');
     els.levelText.textContent = `LV ${player.level}`;
     els.atkText.textContent = `ATK ${player.atk}`;
     els.defText.textContent = `DEF ${player.def}`;
@@ -720,13 +732,15 @@ function renderEncounter(encounter, monsters) {
     els.encounterCountEffect.textContent = encounter.isBoss ? 'บอส x1' : `ปกติ x${encounter.count}`;
 
     monsters.forEach((monster, index) => {
+        const element = monsterElement(monster);
         const row = document.createElement('button');
         row.type = 'button';
         row.className = index === 0 ? 'selected' : '';
-        row.textContent = `${index + 1}. ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''}`;
+        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''}`;
         row.className = monster.id === state.selectedMonsterId ? 'selected' : '';
         row.disabled = monster.current_hp <= 0;
-        row.textContent = `${index + 1}. ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''} HP ${monster.current_hp}/${monster.hp}`;
+        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''} HP ${monster.current_hp}/${monster.hp}`;
+        row.style.borderColor = element.color;
         row.addEventListener('click', () => {
             state.selectedMonsterId = monster.id;
             render();
@@ -743,6 +757,41 @@ function levelDiceLabel(dice, delta, targetLevel) {
     return `ผู้เล่น -2 = LV ${targetLevel}`;
 }
 
+function monsterElement(monster) {
+    return elementMeta[monster?.element || 'neutral'] || elementMeta.neutral;
+}
+
+function elementAdvantage(attacker, defender) {
+    const strongAgainst = {
+        earth: 'water',
+        wind: 'earth',
+        fire: 'wind',
+        water: 'fire',
+    };
+
+    if (!attacker || !defender || attacker === 'neutral' || defender === 'neutral') {
+        return 1;
+    }
+
+    return strongAgainst[attacker] === defender ? 1.5 : 1;
+}
+
+function renderElementChoices(currentElement) {
+    if (!els.elementChoices) return;
+
+    els.elementChoices.innerHTML = '';
+    ['earth', 'water', 'wind', 'fire'].forEach((element) => {
+        const meta = elementMeta[element];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `element-choice element-${element}${element === currentElement ? ' selected' : ''}`;
+        button.textContent = meta.label;
+        button.style.borderColor = meta.color;
+        button.addEventListener('click', () => chooseElement(element));
+        els.elementChoices.appendChild(button);
+    });
+}
+
 function renderCombatReadout(player, monsters, skills) {
     const monster = monsters.find((item) => item.id === state.selectedMonsterId) || monsters[0];
     const skill = skills.find((item) => item.id === state.selectedSkillId) || skills[0];
@@ -757,16 +806,18 @@ function renderCombatReadout(player, monsters, skills) {
     const activeSkill = canUseSkill && cooldownReady ? skill : null;
     const skillBonus = activeSkill?.id === 'punch' ? 1.1 : 1;
     const baseDamage = Math.max(1, Math.floor((player.atk + (activeSkill?.damage || 0) - monster.def) * skillBonus));
+    const element = monsterElement(monster);
+    const elementBonus = elementAdvantage(player.element || 'earth', monster.element || 'neutral');
 
-    els.monsterNameText.textContent = `${monster.name} LV ${monster.level}`;
+    els.monsterNameText.textContent = `${element.fullLabel} ${monster.name} LV ${monster.level}`;
+    els.monsterNameText.style.color = element.color;
     els.monsterStatsText.textContent = `ATK ${monster.atk} / DEF ${monster.def}`;
     els.monsterHpText.textContent = `${visibleMonsterHp}/${monster.hp}`;
     els.diceResultText.textContent = state.lastDice === null ? 'Roll: -' : `Roll: ${state.lastDice}`;
     els.hitEffectText.textContent = state.lastEffect === null ? 'Effect: -' : `Effect: ${state.lastEffect}`;
     els.monsterRollText.textContent = state.lastMonsterDice === null ? 'Monster Roll: -' : `Monster Roll: ${state.lastMonsterDice}`;
     els.monsterLastDamageText.textContent = state.lastMonsterDamage === null ? 'Monster DMG: -' : `Monster DMG: ${state.lastMonsterDamage}`;
-    els.damageEstimateText.textContent = `Base DMG: ${baseDamage - 3}-${baseDamage + 6}${skillBonus > 1 ? ' (+10%)' : ''}${skill && !canUseSkill ? ' (MP ไม่พอ)' : ''}`;
-    els.damageEstimateText.textContent = `Base DMG: ${baseDamage - 3}-${baseDamage + 6}${skillBonus > 1 ? ' (+10%)' : ''}${skill && !canUseSkill ? ' (MP ไม่พอ)' : ''}${!cooldownReady ? ' (ติด cooldown)' : ''}`;
+    els.damageEstimateText.textContent = `Base DMG: ${baseDamage - 3}-${baseDamage + 6}${skillBonus > 1 ? ' (+10%)' : ''}${elementBonus > 1 ? ' x1.5 element' : ''}${skill && !canUseSkill ? ' (MP ไม่พอ)' : ''}${!cooldownReady ? ' (ติด cooldown)' : ''}`;
     els.lastDamageText.textContent = state.lastDamage === null ? 'Last DMG: -' : `Last DMG: ${state.lastDamage}`;
     renderDiceFace(els.playerDiceFace, els.playerDiceEffect, state.lastDice, state.lastEffect);
     renderDiceFace(els.monsterDiceFace, els.monsterDiceEffect, state.lastMonsterDice, state.lastMonsterEffect);
@@ -817,10 +868,12 @@ function renderWorldPanels(world) {
             els.arenaPlayerList.appendChild(empty);
         }
         onlinePlayers.forEach((player) => {
+            const element = elementMeta[player.element || 'earth'] || elementMeta.earth;
             const button = document.createElement('button');
             button.type = 'button';
             button.className = player.id === state.selectedOpponentId ? 'selected' : '';
-            button.textContent = `${player.name} LV ${player.level} | PVP ${player.pvp_rating}`;
+            button.textContent = `${element.fullLabel} ${player.name} LV ${player.level} | PVP ${player.pvp_rating}`;
+            button.style.borderColor = element.color;
             button.addEventListener('click', () => {
                 state.selectedOpponentId = player.id;
                 startPvp(player.id);
@@ -885,7 +938,9 @@ function renderPvpPanel(pvp, skills) {
     const maxHp = opponent?.hp ?? opponent?.max_hp ?? 1;
 
     if (els.pvpOpponentName) {
-        els.pvpOpponentName.textContent = opponent ? `${opponent.name} LV ${opponent.level}` : 'เลือกคู่ต่อสู้';
+        const element = elementMeta[opponent?.element || 'earth'] || elementMeta.earth;
+        els.pvpOpponentName.textContent = opponent ? `${element.fullLabel} ${opponent.name} LV ${opponent.level}` : 'เลือกคู่ต่อสู้';
+        els.pvpOpponentName.style.color = opponent ? element.color : '';
         els.pvpOpponentStats.textContent = opponent
             ? `ATK ${opponent.atk ?? '-'} / DEF ${opponent.def ?? '-'} / Rating ${opponent.pvp_rating ?? '-'}`
             : 'ผู้เล่นทุกคนบนโลกสู้กันได้';
@@ -1158,6 +1213,22 @@ async function changeClass(classId) {
         });
         setPayload(payload);
         log(`เปลี่ยนคลาสเป็น ${payload.class.name} สำเร็จ`);
+    } catch (error) {
+        log(error.message);
+    }
+}
+
+async function chooseElement(element) {
+    await ensurePayload();
+    const { player } = state.payload;
+
+    try {
+        const payload = await request(`/game/player/${player.id}/element`, {
+            method: 'PATCH',
+            body: JSON.stringify({ element }),
+        });
+        setPayload(payload);
+        log(`เลือก${elementMeta[element]?.fullLabel || element}แล้ว`);
     } catch (error) {
         log(error.message);
     }

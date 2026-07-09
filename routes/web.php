@@ -10,6 +10,7 @@ Route::get('/game/world', [GameController::class, 'world'])->name('game.world');
 Route::patch('/game/player/{player}/rename', [GameController::class, 'rename'])->name('game.rename');
 Route::post('/game/player/{player}/heartbeat', [GameController::class, 'heartbeat'])->name('game.heartbeat');
 Route::post('/game/player/{player}/chat', [GameController::class, 'chat'])->name('game.chat');
+Route::patch('/game/player/{player}/element', [GameController::class, 'chooseElement'])->name('game.element');
 Route::post('/game/player/{player}/roll-encounter', [GameController::class, 'rollEncounter'])->name('game.roll-encounter');
 Route::post('/game/player/{player}/fight', [GameController::class, 'fight'])->name('game.fight');
 Route::post('/game/player/{player}/pvp/start', [GameController::class, 'startPvp'])->name('game.pvp.start');

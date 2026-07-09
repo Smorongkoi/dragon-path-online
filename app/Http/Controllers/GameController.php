@@ -30,6 +30,7 @@ class GameController extends Controller
             ['browser_token' => $data['browserToken']],
             [
                 'name' => $data['name'] ?? 'Adventurer',
+                'element' => 'earth',
                 'inventory' => [],
                 'class_history' => ['normal'],
             ]
@@ -83,17 +84,33 @@ class GameController extends Controller
         return response()->json($this->gamePayload($request, $player->fresh()));
     }
 
+    public function chooseElement(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'element' => ['required', 'string', 'in:earth,water,wind,fire'],
+        ]);
+
+        $player->forceFill([
+            'element' => $data['element'],
+            'last_seen_at' => now(),
+        ])->save();
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
     public function rollEncounter(Request $request, Player $player): JsonResponse
     {
         $data = $request->validate([
             'level_dice' => ['nullable', 'integer', 'between:1,6'],
             'count_dice' => ['nullable', 'integer', 'between:1,6'],
+            'monster_element' => ['nullable', 'string', 'in:earth,water,wind,fire,neutral'],
         ]);
 
         $encounter = $this->generateEncounter(
             $player,
             $this->rollDice($data['level_dice'] ?? null),
-            $this->rollDice($data['count_dice'] ?? null)
+            $this->rollDice($data['count_dice'] ?? null),
+            app()->environment('testing') ? ($data['monster_element'] ?? null) : null
         );
 
         $request->session()->put($this->encounterKey($player), $encounter);
@@ -139,8 +156,11 @@ class GameController extends Controller
         $dice = $this->rollDice($data['dice'] ?? null);
         $diceResult = $this->diceResult($dice);
         $playerDamage = $this->applyDiceDamage($baseDamage, $diceResult);
+        $playerElement = $this->elementPayload($player->element, $monster['element'] ?? 'neutral');
+        $playerDamage = $this->applyElementDamage($playerDamage, $playerElement);
         $encounter['monsters'][$targetIndex]['current_hp'] = max(0, $monster['current_hp'] - $playerDamage);
         $attackName = $activeSkill?->name ?? 'Basic Attack';
+        $playerElementText = $this->elementText($playerElement);
 
         if ($activeSkill && $activeSkill->cooldown > 0) {
             $encounter['cooldowns'][$activeSkill->id] = $turnNumber + $activeSkill->cooldown + 1;
@@ -149,12 +169,14 @@ class GameController extends Controller
         $turns[] = [
             'actor' => 'player',
             'targetIndex' => $targetIndex,
-            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}",
+            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}{$playerElementText}",
             'skill' => $activeSkill,
             'manaCost' => $manaCost,
             'playerMp' => $playerMp,
             'damage' => $playerDamage,
             'baseDamage' => $baseDamage,
+            'element' => $playerElement,
+            'elementMultiplier' => $playerElement['multiplier'],
             'skillBonus' => $skillBonus,
             'dice' => $dice,
             'result' => $diceResult['key'],
@@ -180,14 +202,19 @@ class GameController extends Controller
             $monsterDice = $this->rollDice($data['monster_dice'] ?? null);
             $monsterDiceResult = $this->diceResult($monsterDice);
             $monsterDamage = $this->applyDiceDamage($monsterBaseDamage, $monsterDiceResult);
+            $monsterElement = $this->elementPayload($monster['element'] ?? 'neutral', $player->element);
+            $monsterDamage = $this->applyElementDamage($monsterDamage, $monsterElement);
             $playerHp = max(0, $playerHp - $monsterDamage);
+            $monsterElementText = $this->elementText($monsterElement);
 
             $turns[] = [
                 'actor' => 'monster',
                 'targetIndex' => $targetIndex,
-                'text' => "{$monster['name']} rolled {$monsterDice}: {$monsterDiceResult['label']} countered for {$monsterDamage}",
+                'text' => "{$monster['name']} rolled {$monsterDice}: {$monsterDiceResult['label']} countered for {$monsterDamage}{$monsterElementText}",
                 'damage' => $monsterDamage,
                 'baseDamage' => $monsterBaseDamage,
+                'element' => $monsterElement,
+                'elementMultiplier' => $monsterElement['multiplier'],
                 'dice' => $monsterDice,
                 'result' => $monsterDiceResult['key'],
                 'label' => $monsterDiceResult['label'],
@@ -293,8 +320,11 @@ class GameController extends Controller
         $dice = $this->rollDice($data['dice'] ?? null);
         $diceResult = $this->diceResult($dice);
         $playerDamage = $this->applyDiceDamage($baseDamage, $diceResult);
+        $playerElement = $this->elementPayload($pvp['player']['element'] ?? $player->element, $pvp['opponent']['element'] ?? 'earth');
+        $playerDamage = $this->applyElementDamage($playerDamage, $playerElement);
         $opponentHp = max(0, $opponentHp - $playerDamage);
         $attackName = $activeSkill?->name ?? 'Basic Attack';
+        $playerElementText = $this->elementText($playerElement);
 
         if ($activeSkill && $activeSkill->cooldown > 0) {
             $pvp['cooldowns'][$activeSkill->id] = $turnNumber + $activeSkill->cooldown + 1;
@@ -302,10 +332,12 @@ class GameController extends Controller
 
         $turns[] = [
             'actor' => 'player',
-            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}",
+            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}{$playerElementText}",
             'skill' => $activeSkill,
             'manaCost' => $manaCost,
             'damage' => $playerDamage,
+            'element' => $playerElement,
+            'elementMultiplier' => $playerElement['multiplier'],
             'dice' => $dice,
             'result' => $diceResult['key'],
             'label' => $diceResult['label'],
@@ -320,12 +352,17 @@ class GameController extends Controller
             $opponentDice = $this->rollDice($data['opponent_dice'] ?? null);
             $opponentDiceResult = $this->diceResult($opponentDice);
             $opponentDamage = $this->applyDiceDamage($opponentBaseDamage, $opponentDiceResult);
+            $opponentElement = $this->elementPayload($pvp['opponent']['element'] ?? 'earth', $pvp['player']['element'] ?? $player->element);
+            $opponentDamage = $this->applyElementDamage($opponentDamage, $opponentElement);
             $playerHp = max(0, $playerHp - $opponentDamage);
+            $opponentElementText = $this->elementText($opponentElement);
 
             $turns[] = [
                 'actor' => 'opponent',
-                'text' => "{$pvp['opponent']['name']} rolled {$opponentDice}: {$opponentDiceResult['label']} countered for {$opponentDamage}",
+                'text' => "{$pvp['opponent']['name']} rolled {$opponentDice}: {$opponentDiceResult['label']} countered for {$opponentDamage}{$opponentElementText}",
                 'damage' => $opponentDamage,
+                'element' => $opponentElement,
+                'elementMultiplier' => $opponentElement['multiplier'],
                 'dice' => $opponentDice,
                 'result' => $opponentDiceResult['key'],
                 'label' => $opponentDiceResult['label'],
@@ -438,7 +475,7 @@ class GameController extends Controller
             'totalPlayers' => Player::count(),
             'onlineCount' => Player::where('last_seen_at', '>=', $onlineCutoff)->count(),
             'onlinePlayers' => Player::query()
-                ->select(['id', 'name', 'level', 'class_id', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'last_seen_at'])
+                ->select(['id', 'name', 'level', 'class_id', 'element', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'last_seen_at'])
                 ->where('last_seen_at', '>=', $onlineCutoff)
                 ->when($currentPlayer, fn ($query) => $query->where('id', '!=', $currentPlayer->id))
                 ->orderByDesc('level')
@@ -446,7 +483,7 @@ class GameController extends Controller
                 ->limit(30)
                 ->get(),
             'leaderboard' => Player::query()
-                ->select(['id', 'name', 'level', 'class_id', 'pvp_wins', 'pvp_losses', 'pvp_rating'])
+                ->select(['id', 'name', 'level', 'class_id', 'element', 'pvp_wins', 'pvp_losses', 'pvp_rating'])
                 ->orderByDesc('pvp_rating')
                 ->orderByDesc('pvp_wins')
                 ->orderBy('pvp_losses')
@@ -483,6 +520,9 @@ class GameController extends Controller
                 'name' => $player->name,
                 'level' => $player->level,
                 'class_id' => $player->class_id,
+                'element' => $player->element,
+                'element_label' => $this->elementLabel($player->element),
+                'element_color' => $this->elementColor($player->element),
                 'hp' => $playerStats['max_hp'],
                 'current_hp' => $playerStats['max_hp'],
                 'mp' => $playerStats['max_mp'],
@@ -495,6 +535,9 @@ class GameController extends Controller
                 'name' => $opponent->name,
                 'level' => $opponent->level,
                 'class_id' => $opponent->class_id,
+                'element' => $opponent->element,
+                'element_label' => $this->elementLabel($opponent->element),
+                'element_color' => $this->elementColor($opponent->element),
                 'hp' => $opponentStats['max_hp'],
                 'current_hp' => $opponentStats['max_hp'],
                 'mp' => $opponentStats['max_mp'],
@@ -518,7 +561,7 @@ class GameController extends Controller
         }
     }
 
-    private function generateEncounter(Player $player, int $levelDice, int $countDice): array
+    private function generateEncounter(Player $player, int $levelDice, int $countDice, ?string $forcedElement = null): array
     {
         $levelDelta = match ($levelDice) {
             6 => 2,
@@ -549,6 +592,7 @@ class GameController extends Controller
         for ($i = 0; $i < $count; $i++) {
             $base = $baseMonsters[$i % $baseMonsters->count()];
             $levelScale = max(1, $targetLevel) / max(1, $base->level);
+            $element = $forcedElement ?? $this->randomMonsterElement();
             $monster = [
                 'id' => "{$base->id}-{$i}",
                 'base_id' => $base->id,
@@ -561,6 +605,9 @@ class GameController extends Controller
                 'exp_reward' => max(1, (int) floor($base->exp_reward * $levelScale * ($isBoss ? 3.2 : 1))),
                 'sprite_key' => $base->sprite_key,
                 'is_boss' => $isBoss,
+                'element' => $element,
+                'element_label' => $this->elementLabel($element),
+                'element_color' => $this->elementColor($element),
             ];
             $monsters[] = $monster;
         }
@@ -578,6 +625,86 @@ class GameController extends Controller
             'cooldowns' => [],
             'monsters' => $monsters,
         ];
+    }
+
+    private function randomMonsterElement(): string
+    {
+        $elements = ['earth', 'water', 'wind', 'fire', 'neutral'];
+
+        return $elements[array_rand($elements)];
+    }
+
+    private function elementPayload(?string $attacker, ?string $defender): array
+    {
+        $attacker = $attacker ?: 'neutral';
+        $defender = $defender ?: 'neutral';
+        $multiplier = $this->elementMultiplier($attacker, $defender);
+
+        return [
+            'attacker' => $attacker,
+            'defender' => $defender,
+            'attacker_label' => $this->elementLabel($attacker),
+            'defender_label' => $this->elementLabel($defender),
+            'attacker_color' => $this->elementColor($attacker),
+            'defender_color' => $this->elementColor($defender),
+            'multiplier' => $multiplier,
+        ];
+    }
+
+    private function elementMultiplier(string $attacker, string $defender): float
+    {
+        if ($attacker === 'neutral' || $defender === 'neutral') {
+            return 1.0;
+        }
+
+        $strongAgainst = [
+            'earth' => 'water',
+            'wind' => 'earth',
+            'fire' => 'wind',
+            'water' => 'fire',
+        ];
+
+        return ($strongAgainst[$attacker] ?? null) === $defender ? 1.5 : 1.0;
+    }
+
+    private function applyElementDamage(int $damage, array $element): int
+    {
+        if ($damage <= 0) {
+            return 0;
+        }
+
+        return max(1, (int) floor($damage * (float) $element['multiplier']));
+    }
+
+    private function elementText(array $element): string
+    {
+        if ((float) $element['multiplier'] <= 1.0) {
+            return '';
+        }
+
+        return " | {$element['attacker_label']}ชนะ{$element['defender_label']} x{$element['multiplier']}";
+    }
+
+    private function elementLabel(?string $element): string
+    {
+        return match ($element) {
+            'earth' => 'ธาตุดิน',
+            'water' => 'ธาตุน้ำ',
+            'wind' => 'ธาตุลม',
+            'fire' => 'ธาตุไฟ',
+            default => 'ไร้ธาตุ',
+        };
+    }
+
+    private function elementColor(?string $element): string
+    {
+        return match ($element) {
+            'earth' => '#92400e',
+            'water' => '#38bdf8',
+            'wind' => '#22c55e',
+            'fire' => '#ef4444',
+            default => '#94a3b8',
+        };
     }
 
     private function grantBossReward(Player $player): array

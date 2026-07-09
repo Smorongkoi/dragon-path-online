@@ -1,0 +1,512 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\CharacterClass;
+use App\Models\ClassEvolution;
+use App\Models\Monster;
+use App\Models\Player;
+use App\Models\Skill;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
+
+class GameController extends Controller
+{
+    public function index(): View
+    {
+        return view('game');
+    }
+
+    public function bootstrap(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'browserToken' => ['required', 'string', 'max:120'],
+            'name' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        $player = Player::firstOrCreate(
+            ['browser_token' => $data['browserToken']],
+            [
+                'name' => $data['name'] ?? 'Adventurer',
+                'inventory' => [],
+                'class_history' => ['normal'],
+            ]
+        );
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function rename(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:60'],
+        ]);
+
+        $player->update(['name' => $data['name']]);
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function rollEncounter(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'level_dice' => ['nullable', 'integer', 'between:1,6'],
+            'count_dice' => ['nullable', 'integer', 'between:1,6'],
+        ]);
+
+        $encounter = $this->generateEncounter(
+            $player,
+            $this->rollDice($data['level_dice'] ?? null),
+            $this->rollDice($data['count_dice'] ?? null)
+        );
+
+        $request->session()->put($this->encounterKey($player), $encounter);
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function fight(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'skill_id' => ['nullable', 'string', 'exists:skills,id'],
+            'target_monster_id' => ['nullable', 'string'],
+            'dice' => ['nullable', 'integer', 'between:1,6'],
+            'monster_dice' => ['nullable', 'integer', 'between:1,6'],
+        ]);
+
+        $encounter = $request->session()->get($this->encounterKey($player));
+        if (! $encounter) {
+            $encounter = $this->generateEncounter($player, $this->rollDice(), $this->rollDice());
+            $request->session()->put($this->encounterKey($player), $encounter);
+        }
+
+        $skill = $this->classSkill($player, $data['skill_id'] ?? null);
+        $stats = $this->playerStats($player);
+        $playerHp = $player->hp > 0 ? $player->hp : $stats['max_hp'];
+        $playerMp = min($player->mp, $stats['max_mp']);
+        $turns = [];
+
+        $targetIndex = $this->targetMonsterIndex($encounter, $data['target_monster_id'] ?? null);
+        if ($targetIndex === null) {
+            return response()->json(['message' => 'No living monster target.'], 422);
+        }
+
+        $turnNumber = (int) ($encounter['turn'] ?? 1);
+        $monster = $encounter['monsters'][$targetIndex];
+        $activeSkill = $this->usableSkill($skill, $playerMp, $encounter, $turnNumber);
+        $manaCost = (int) ($activeSkill?->mana_cost ?? 0);
+        $playerMp = max(0, $playerMp - $manaCost);
+        $skillDamage = ($activeSkill ? $activeSkill->damage + ($player->int_stat * 2) : 0);
+        $baseDamage = max(1, $stats['atk'] + $skillDamage - $monster['def'] + random_int(-3, 6));
+        $skillBonus = $this->skillBonusMultiplier($activeSkill);
+        $baseDamage = max(1, (int) floor($baseDamage * $skillBonus));
+        $dice = $this->rollDice($data['dice'] ?? null);
+        $diceResult = $this->diceResult($dice);
+        $playerDamage = $this->applyDiceDamage($baseDamage, $diceResult);
+        $encounter['monsters'][$targetIndex]['current_hp'] = max(0, $monster['current_hp'] - $playerDamage);
+        $attackName = $activeSkill?->name ?? 'Basic Attack';
+
+        if ($activeSkill && $activeSkill->cooldown > 0) {
+            $encounter['cooldowns'][$activeSkill->id] = $turnNumber + $activeSkill->cooldown + 1;
+        }
+
+        $turns[] = [
+            'actor' => 'player',
+            'targetIndex' => $targetIndex,
+            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}",
+            'skill' => $activeSkill,
+            'manaCost' => $manaCost,
+            'playerMp' => $playerMp,
+            'damage' => $playerDamage,
+            'baseDamage' => $baseDamage,
+            'skillBonus' => $skillBonus,
+            'dice' => $dice,
+            'result' => $diceResult['key'],
+            'label' => $diceResult['label'],
+            'effect' => $diceResult['effect'],
+            'multiplier' => $diceResult['multiplier'],
+            'monsterHp' => $encounter['monsters'][$targetIndex]['current_hp'],
+            'playerHp' => $playerHp,
+        ];
+
+        if ($encounter['monsters'][$targetIndex]['current_hp'] <= 0) {
+            $turns[] = [
+                'actor' => 'system',
+                'type' => 'monster_defeated',
+                'text' => "{$monster['name']} defeated",
+                'monster' => $encounter['monsters'][$targetIndex],
+                'targetIndex' => $targetIndex,
+                'monsterHp' => 0,
+                'playerHp' => $playerHp,
+            ];
+        } else {
+            $monsterBaseDamage = max(1, $monster['atk'] - $stats['def'] + random_int(-2, 5));
+            $monsterDice = $this->rollDice($data['monster_dice'] ?? null);
+            $monsterDiceResult = $this->diceResult($monsterDice);
+            $monsterDamage = $this->applyDiceDamage($monsterBaseDamage, $monsterDiceResult);
+            $playerHp = max(0, $playerHp - $monsterDamage);
+
+            $turns[] = [
+                'actor' => 'monster',
+                'targetIndex' => $targetIndex,
+                'text' => "{$monster['name']} rolled {$monsterDice}: {$monsterDiceResult['label']} countered for {$monsterDamage}",
+                'damage' => $monsterDamage,
+                'baseDamage' => $monsterBaseDamage,
+                'dice' => $monsterDice,
+                'result' => $monsterDiceResult['key'],
+                'label' => $monsterDiceResult['label'],
+                'effect' => $monsterDiceResult['effect'],
+                'multiplier' => $monsterDiceResult['multiplier'],
+                'monsterHp' => $encounter['monsters'][$targetIndex]['current_hp'],
+                'playerHp' => $playerHp,
+            ];
+        }
+
+        $encounter['turn'] = $turnNumber + 1;
+        $won = collect($encounter['monsters'])->every(fn (array $monster) => $monster['current_hp'] <= 0);
+        $playerDefeated = $playerHp <= 0;
+        $expGained = $won ? array_sum(array_column($encounter['monsters'], 'exp_reward')) : 0;
+
+        $bossReward = null;
+        if ($won && $encounter['isBoss']) {
+            $bossReward = $this->grantBossReward($player);
+        }
+
+        $levelSummary = $this->addExp($player, $expGained);
+        $freshStats = $this->playerStats($player->fresh());
+        $mpGainedFromProgression = max(0, $freshStats['max_mp'] - $stats['max_mp']);
+
+        $player->forceFill([
+            'hp' => $won ? $freshStats['max_hp'] : max(1, $playerHp),
+            'mp' => min($freshStats['max_mp'], $playerMp + $mpGainedFromProgression),
+            'max_hp' => $freshStats['max_hp'],
+            'max_mp' => $freshStats['max_mp'],
+            'atk' => $freshStats['atk'],
+            'def' => $freshStats['def'],
+        ])->save();
+
+        if ($won || $playerDefeated) {
+            $request->session()->forget($this->encounterKey($player));
+        } else {
+            $request->session()->put($this->encounterKey($player), $encounter);
+        }
+
+        return response()->json([
+            ...$this->gamePayload($request, $player->fresh()),
+            'battle' => [
+                'won' => $won,
+                'playerDefeated' => $playerDefeated,
+                'expGained' => $expGained,
+                'bossReward' => $bossReward,
+                'monster' => $encounter['monsters'][$targetIndex],
+                'encounter' => $encounter,
+                'skill' => $skill,
+                'turns' => $turns,
+                'levelSummary' => $levelSummary,
+            ],
+        ]);
+    }
+
+    public function changeClass(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'class_id' => ['required', 'string', 'exists:character_classes,id'],
+        ]);
+
+        $canChange = $this->availableEvolutions($player)
+            ->contains(fn (CharacterClass $class) => $class->id === $data['class_id']);
+
+        if (! $canChange) {
+            return response()->json(['message' => 'This class is not available yet.'], 422);
+        }
+
+        $history = $player->class_history ?? [];
+        $history[] = $data['class_id'];
+        $player->forceFill([
+            'class_id' => $data['class_id'],
+            'class_history' => $history,
+        ])->save();
+
+        $stats = $this->playerStats($player->fresh());
+        $player->forceFill([
+            'hp' => $stats['max_hp'],
+            'mp' => $stats['max_mp'],
+            'max_hp' => $stats['max_hp'],
+            'max_mp' => $stats['max_mp'],
+            'atk' => $stats['atk'],
+            'def' => $stats['def'],
+        ])->save();
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    private function gamePayload(Request $request, Player $player): array
+    {
+        $skillClassIds = [$player->class_id];
+        $encounter = $request->session()->get($this->encounterKey($player));
+
+        return [
+            'player' => $player,
+            'class' => CharacterClass::find($player->class_id),
+            'nextExp' => $this->expRequired($player->level),
+            'availableEvolutions' => $this->availableEvolutions($player)->values(),
+            'skills' => Skill::whereIn('class_id', $skillClassIds)
+                ->orderByRaw('case when class_id = ? then 0 else 1 end', [$player->class_id])
+                ->get()
+                ->map(fn (Skill $skill) => $this->skillPayload($skill, $encounter))
+                ->unique('id')
+                ->values(),
+            'encounter' => $encounter,
+            'csrfToken' => csrf_token(),
+        ];
+    }
+
+    private function generateEncounter(Player $player, int $levelDice, int $countDice): array
+    {
+        $levelDelta = match ($levelDice) {
+            6 => 2,
+            5 => 1,
+            4, 3 => 0,
+            2 => -1,
+            default => -2,
+        };
+        $targetLevel = max(1, min(100, $player->level + $levelDelta));
+        $isBoss = $countDice === 6;
+        $count = match ($countDice) {
+            6 => 1,
+            5 => random_int(3, 4),
+            4, 3 => random_int(2, 3),
+            default => random_int(1, 2),
+        };
+
+        $baseMonsters = Monster::orderByRaw('abs(level - ?)', [$targetLevel])
+            ->orderBy('level')
+            ->limit(4)
+            ->get();
+
+        if ($baseMonsters->isEmpty()) {
+            $baseMonsters = Monster::limit(1)->get();
+        }
+
+        $monsters = [];
+        for ($i = 0; $i < $count; $i++) {
+            $base = $baseMonsters[$i % $baseMonsters->count()];
+            $levelScale = max(1, $targetLevel) / max(1, $base->level);
+            $monster = [
+                'id' => "{$base->id}-{$i}",
+                'base_id' => $base->id,
+                'name' => $isBoss ? "Boss {$base->name}" : $base->name,
+                'level' => $targetLevel,
+                'hp' => $this->scaledMonsterHp($base, $targetLevel, $levelScale, $isBoss),
+                'current_hp' => $this->scaledMonsterHp($base, $targetLevel, $levelScale, $isBoss),
+                'atk' => max(1, (int) floor($base->atk * $levelScale * ($isBoss ? 1.6 : 1))),
+                'def' => max(0, (int) floor($base->def * $levelScale * ($isBoss ? 1.35 : 1))),
+                'exp_reward' => max(1, (int) floor($base->exp_reward * $levelScale * ($isBoss ? 3.2 : 1))),
+                'sprite_key' => $base->sprite_key,
+                'is_boss' => $isBoss,
+            ];
+            $monsters[] = $monster;
+        }
+
+        return [
+            'id' => uniqid('enc_', true),
+            'levelDice' => $levelDice,
+            'countDice' => $countDice,
+            'levelDelta' => $levelDelta,
+            'targetLevel' => $targetLevel,
+            'isBoss' => $isBoss,
+            'count' => $count,
+            'label' => $isBoss ? 'Boss encounter' : "Normal encounter x{$count}",
+            'turn' => 1,
+            'cooldowns' => [],
+            'monsters' => $monsters,
+        ];
+    }
+
+    private function grantBossReward(Player $player): array
+    {
+        $stats = ['atk_stat', 'agi', 'vit', 'luk', 'int_stat'];
+        $stat = $stats[array_rand($stats)];
+        $player->increment($stat);
+
+        return [
+            'stat' => $stat,
+            'amount' => 1,
+        ];
+    }
+
+    private function playerStats(Player $player): array
+    {
+        $class = CharacterClass::find($player->class_id);
+        $level = $player->level;
+
+        return [
+            'max_hp' => 100 + ($level - 1) * 12 + (int) ($class?->hp_bonus ?? 0) + ($player->vit * 8),
+            'max_mp' => 30 + ($level - 1) * 4 + (int) ($class?->mp_bonus ?? 0) + ($player->int_stat * 3),
+            'atk' => 10 + ($level - 1) * 3 + (int) ($class?->atk_bonus ?? 0) + ($player->atk_stat * 2),
+            'def' => 5 + ($level - 1) * 2 + (int) ($class?->def_bonus ?? 0) + $player->vit,
+        ];
+    }
+
+    private function classSkill(Player $player, ?string $skillId): ?Skill
+    {
+        if ($skillId) {
+            $skill = Skill::where('id', $skillId)
+                ->where('class_id', $player->class_id)
+                ->first();
+
+            if ($skill) {
+                return $skill;
+            }
+        }
+
+        return Skill::where('class_id', $player->class_id)->first()
+            ?? Skill::where('class_id', 'normal')->first();
+    }
+
+    private function usableSkill(?Skill $skill, int $currentMp, array $encounter, int $turnNumber): ?Skill
+    {
+        if (! $skill) {
+            return null;
+        }
+
+        if ($currentMp < (int) $skill->mana_cost) {
+            return null;
+        }
+
+        $availableTurn = (int) ($encounter['cooldowns'][$skill->id] ?? 0);
+
+        return $turnNumber >= $availableTurn ? $skill : null;
+    }
+
+    private function skillPayload(Skill $skill, ?array $encounter): Skill
+    {
+        $turnNumber = (int) ($encounter['turn'] ?? 1);
+        $availableTurn = (int) ($encounter['cooldowns'][$skill->id] ?? 0);
+        $skill->setAttribute('cooldown_remaining', max(0, $availableTurn - $turnNumber));
+
+        return $skill;
+    }
+
+    private function targetMonsterIndex(array $encounter, ?string $targetMonsterId): ?int
+    {
+        foreach ($encounter['monsters'] as $index => $monster) {
+            if (($monster['current_hp'] ?? $monster['hp']) <= 0) {
+                continue;
+            }
+
+            if ($targetMonsterId === null || $monster['id'] === $targetMonsterId) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function scaledMonsterHp(Monster $base, int $targetLevel, float $levelScale, bool $isBoss): int
+    {
+        $levelBonus = ($targetLevel * 12) + (int) floor(($targetLevel ** 1.35) * 2);
+        $normalHp = (int) floor(($base->hp * $levelScale) + $levelBonus);
+
+        return max(20, (int) floor($normalHp * ($isBoss ? 2.4 : 1)));
+    }
+
+    private function addExp(Player $player, int $expGained): array
+    {
+        $levelsGained = 0;
+        $player->exp += $expGained;
+
+        while ($player->level < 100 && $player->exp >= $this->expRequired($player->level)) {
+            $player->exp -= $this->expRequired($player->level);
+            $player->level++;
+            $levelsGained++;
+        }
+
+        $player->save();
+
+        return [
+            'levelsGained' => $levelsGained,
+            'leveledUp' => $levelsGained > 0,
+            'currentLevel' => $player->level,
+        ];
+    }
+
+    private function expRequired(int $level): int
+    {
+        if ($level >= 100) {
+            return 0;
+        }
+
+        return 100 + (($level - 1) * 50) + (int) floor(($level ** 1.45) * 12);
+    }
+
+    private function diceResult(int $dice): array
+    {
+        return match ($dice) {
+            6 => ['key' => 'super_critical', 'label' => 'SUPER CRITICAL x2', 'effect' => 'x2', 'multiplier' => 2.0],
+            5 => ['key' => 'critical', 'label' => 'CRITICAL', 'effect' => 'critical', 'multiplier' => 1.4],
+            4 => ['key' => 'armor_pierce', 'label' => 'Armor Pierce / Bleed', 'effect' => 'bleed', 'multiplier' => 1.2],
+            3 => ['key' => 'normal', 'label' => 'Normal Hit', 'effect' => 'normal', 'multiplier' => 1.0],
+            2 => ['key' => 'blocked', 'label' => 'Blocked', 'effect' => 'blocked', 'multiplier' => 0.8],
+            default => ['key' => 'dodged', 'label' => 'Dodged', 'effect' => 'dodge', 'multiplier' => 0.0],
+        };
+    }
+
+    private function rollDice(?int $forcedDice = null): int
+    {
+        if (app()->environment('testing') && $forcedDice !== null) {
+            return $forcedDice;
+        }
+
+        return random_int(1, 6);
+    }
+
+    private function applyDiceDamage(int $baseDamage, array $diceResult): int
+    {
+        if ($diceResult['multiplier'] === 0.0) {
+            return 0;
+        }
+
+        return max(1, (int) floor($baseDamage * $diceResult['multiplier']));
+    }
+
+    private function skillBonusMultiplier(?Skill $skill): float
+    {
+        if ($skill?->id === 'punch') {
+            return 1.1;
+        }
+
+        return 1.0;
+    }
+
+    private function availableEvolutions(Player $player)
+    {
+        if ($player->level < 10 || $player->level % 10 !== 0) {
+            return collect();
+        }
+
+        $history = $player->class_history ?? [];
+        $alreadyChangedAtLevel = CharacterClass::whereIn('id', $history)
+            ->where('milestone_level', $player->level)
+            ->exists();
+
+        if ($alreadyChangedAtLevel) {
+            return collect();
+        }
+
+        $targetClassIds = ClassEvolution::where('from_class_id', $player->class_id)
+            ->where('required_level', '<=', $player->level)
+            ->orderBy('choice_order')
+            ->pluck('to_class_id');
+
+        return CharacterClass::whereIn('id', $targetClassIds)
+            ->get()
+            ->sortBy(fn (CharacterClass $class) => $targetClassIds->search($class->id));
+    }
+
+    private function encounterKey(Player $player): string
+    {
+        return "encounter_{$player->id}";
+    }
+}

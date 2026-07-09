@@ -21,6 +21,9 @@ const state = {
     encounterResolved: false,
     scene: null,
     mode: 'world',
+    selectedOpponentId: null,
+    pvpResolved: false,
+    worldTimer: null,
 };
 
 const els = {
@@ -67,6 +70,18 @@ const els = {
     battleLog: document.getElementById('battle-log'),
     evolutionNote: document.getElementById('evolution-note'),
     classChoices: document.getElementById('class-choices'),
+    monsterModeButton: document.getElementById('monster-mode-button'),
+    arenaModeButton: document.getElementById('arena-mode-button'),
+    arenaPlayerList: document.getElementById('arena-player-list'),
+    pvpOpponentName: document.getElementById('pvp-opponent-name'),
+    pvpOpponentStats: document.getElementById('pvp-opponent-stats'),
+    pvpOpponentHpBar: document.getElementById('pvp-opponent-hp-bar'),
+    pvpOpponentHpText: document.getElementById('pvp-opponent-hp-text'),
+    pvpFightButton: document.getElementById('pvp-fight-button'),
+    leaderboardList: document.getElementById('leaderboard-list'),
+    chatList: document.getElementById('chat-list'),
+    chatInput: document.getElementById('chat-input'),
+    chatSendButton: document.getElementById('chat-send-button'),
 };
 
 class BattleScene extends Phaser.Scene {
@@ -278,6 +293,7 @@ async function bootstrap() {
         body: JSON.stringify({ browserToken }),
     });
     setPayload(payload);
+    startWorldPolling();
     log('ยินดีต้อนรับเข้าสู่ Dragon Path Online 0.1');
 }
 
@@ -305,6 +321,9 @@ function setPayload(payload) {
     state.selectedSkillId = payload.skills.some((skill) => skill.id === state.selectedSkillId)
         ? state.selectedSkillId
         : payload.skills[0]?.id ?? null;
+    const onlinePlayers = payload.world?.onlinePlayers || [];
+    state.selectedOpponentId = payload.pvp?.opponent?.id
+        || (onlinePlayers.some((player) => player.id === state.selectedOpponentId) ? state.selectedOpponentId : onlinePlayers[0]?.id ?? null);
     render();
 
     if (battle.won || battle.playerDefeated) {
@@ -340,6 +359,8 @@ function render() {
     }, (skill) => player.mp < skill.mana_cost || skill.cooldown_remaining > 0);
 
     renderCombatReadout(player, monsters, skills);
+    renderWorldPanels(state.payload.world || {});
+    renderPvpPanel(state.payload.pvp, skills);
 
     els.classChoices.innerHTML = '';
     if (availableEvolutions.length === 0) {
@@ -456,6 +477,183 @@ function renderButtons(container, items, selectedId, onClick, label, disabled = 
 
 function setBar(el, value, max) {
     el.style.width = `${Math.max(0, Math.min(100, (value / max) * 100))}%`;
+}
+
+function renderWorldPanels(world) {
+    const onlinePlayers = world.onlinePlayers || [];
+    const leaderboard = world.leaderboard || [];
+    const chatMessages = world.chatMessages || [];
+
+    if (els.arenaPlayerList) {
+        els.arenaPlayerList.innerHTML = '';
+        if (onlinePlayers.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'empty-note';
+            empty.textContent = 'ยังไม่มีผู้เล่นอื่นออนไลน์';
+            els.arenaPlayerList.appendChild(empty);
+        }
+        onlinePlayers.forEach((player) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = player.id === state.selectedOpponentId ? 'selected' : '';
+            button.textContent = `${player.name} LV ${player.level} | PVP ${player.pvp_rating}`;
+            button.addEventListener('click', () => {
+                state.selectedOpponentId = player.id;
+                startPvp(player.id);
+            });
+            els.arenaPlayerList.appendChild(button);
+        });
+    }
+
+    if (els.leaderboardList) {
+        els.leaderboardList.innerHTML = '';
+        leaderboard.forEach((player, index) => {
+            const row = document.createElement('p');
+            row.textContent = `#${index + 1} ${player.name} | ${player.pvp_rating} | W ${player.pvp_wins} / L ${player.pvp_losses}`;
+            els.leaderboardList.appendChild(row);
+        });
+    }
+
+    if (els.chatList) {
+        els.chatList.innerHTML = '';
+        chatMessages.forEach((message) => {
+            const row = document.createElement('p');
+            row.innerHTML = `<strong>${escapeHtml(message.player_name)}</strong>: ${escapeHtml(message.message)}`;
+            els.chatList.appendChild(row);
+        });
+        els.chatList.scrollTop = els.chatList.scrollHeight;
+    }
+}
+
+function renderPvpPanel(pvp, skills) {
+    const opponent = pvp?.opponent || (state.payload.world?.onlinePlayers || []).find((player) => player.id === state.selectedOpponentId);
+    const hp = opponent?.current_hp ?? opponent?.hp ?? 0;
+    const maxHp = opponent?.hp ?? opponent?.max_hp ?? 1;
+
+    if (els.pvpOpponentName) {
+        els.pvpOpponentName.textContent = opponent ? `${opponent.name} LV ${opponent.level}` : 'เลือกคู่ต่อสู้';
+        els.pvpOpponentStats.textContent = opponent
+            ? `ATK ${opponent.atk ?? '-'} / DEF ${opponent.def ?? '-'} / Rating ${opponent.pvp_rating ?? '-'}`
+            : 'ผู้เล่นทุกคนบนโลกสู้กันได้';
+        els.pvpOpponentHpText.textContent = opponent ? `${hp}/${maxHp}` : '0/0';
+        setBar(els.pvpOpponentHpBar, hp, maxHp);
+    }
+
+    if (els.pvpFightButton) {
+        els.pvpFightButton.disabled = !pvp || state.pvpResolved || (skills || []).length === 0;
+    }
+}
+
+function setMode(mode) {
+    state.mode = mode;
+    els.modeRoot.dataset.mode = mode;
+    els.monsterModeButton?.classList.toggle('selected', mode !== 'pvp');
+    els.arenaModeButton?.classList.toggle('selected', mode === 'pvp');
+    state.scene?.setMode(mode === 'pvp' ? 'battle' : mode);
+    render();
+}
+
+async function startPvp(opponentId = state.selectedOpponentId) {
+    await ensurePayload();
+    if (!opponentId) return;
+
+    const { player } = state.payload;
+    try {
+        const payload = await request(`/game/player/${player.id}/pvp/start`, {
+            method: 'POST',
+            body: JSON.stringify({ opponent_id: opponentId }),
+        });
+        resetBattleReadout();
+        state.pvpResolved = false;
+        setPayload(payload);
+        setMode('pvp');
+        log(`เข้าสู่ลานประลองกับ ${payload.pvp.opponent.name}`);
+    } catch (error) {
+        log(error.message);
+    }
+}
+
+async function fightPvp() {
+    await ensurePayload();
+    const { player } = state.payload;
+    if (!state.payload.pvp) return;
+
+    els.pvpFightButton.disabled = true;
+    try {
+        const payload = await request(`/game/player/${player.id}/pvp/fight`, {
+            method: 'POST',
+            body: JSON.stringify({ skill_id: state.selectedSkillId }),
+        });
+        setPayload(payload);
+        showPvpBattle(payload.pvpBattle);
+    } catch (error) {
+        log(error.message);
+    } finally {
+        els.pvpFightButton.disabled = state.pvpResolved || !state.payload?.pvp;
+    }
+}
+
+function showPvpBattle(battle) {
+    state.pvpResolved = battle.won || battle.lost;
+
+    battle.turns.forEach((turn, index) => {
+        window.setTimeout(() => {
+            const actor = turn.actor === 'player' ? 'player' : 'monster';
+            state.scene?.playHit(actor, turn.damage, turn.effect);
+            log(turn.text);
+        }, index * 180);
+    });
+
+    if (battle.won || battle.lost) {
+        log(`${battle.won ? 'ชนะ PVP' : 'แพ้ PVP'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
+        window.setTimeout(() => refreshWorld(), 800);
+    }
+}
+
+async function refreshWorld() {
+    if (!state.payload?.player) return;
+
+    try {
+        const world = await request(`/game/player/${state.payload.player.id}/heartbeat`, { method: 'POST', body: JSON.stringify({}) });
+        state.payload.world = world;
+        renderWorldPanels(world);
+        renderPvpPanel(state.payload.pvp, state.payload.skills || []);
+    } catch (error) {
+        log(error.message);
+    }
+}
+
+function startWorldPolling() {
+    if (state.worldTimer) return;
+    state.worldTimer = window.setInterval(refreshWorld, 5000);
+}
+
+async function sendChat() {
+    await ensurePayload();
+    const message = els.chatInput.value.trim();
+    if (!message) return;
+
+    const { player } = state.payload;
+    try {
+        const world = await request(`/game/player/${player.id}/chat`, {
+            method: 'POST',
+            body: JSON.stringify({ message }),
+        });
+        els.chatInput.value = '';
+        state.payload.world = world;
+        renderWorldPanels(world);
+    } catch (error) {
+        log(error.message);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 
 async function fight() {
@@ -627,6 +825,20 @@ els.toggleStatusButton.addEventListener('click', () => {
 });
 els.toggleMenuButton.addEventListener('click', () => {
     document.body.classList.toggle('menu-hidden');
+});
+els.monsterModeButton?.addEventListener('click', () => setMode('world'));
+els.arenaModeButton?.addEventListener('click', () => {
+    setMode('pvp');
+    if (state.selectedOpponentId && !state.payload?.pvp) {
+        startPvp(state.selectedOpponentId);
+    }
+});
+els.pvpFightButton?.addEventListener('click', fightPvp);
+els.chatSendButton?.addEventListener('click', sendChat);
+els.chatInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        sendChat();
+    }
 });
 window.rollEncounterAction = rollEncounter;
 window.fightAction = fight;

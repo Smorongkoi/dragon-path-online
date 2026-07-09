@@ -352,4 +352,49 @@ class GameFlowTest extends TestCase
             $high->json('encounter.monsters.0.hp')
         );
     }
+
+    public function test_world_chat_and_pvp_leaderboard_work(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $hero = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'pvp-hero-token',
+            'name' => 'Hero',
+        ])->assertOk();
+
+        $rival = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'pvp-rival-token',
+            'name' => 'Rival',
+        ])->assertOk();
+
+        $heroId = $hero->json('player.id');
+        $rivalId = $rival->json('player.id');
+
+        $this->postJson("/game/player/{$heroId}/chat", [
+            'message' => 'hello world',
+        ])->assertOk()
+            ->assertJsonPath('chatMessages.0.message', 'hello world');
+
+        $this->postJson("/game/player/{$heroId}/pvp/start", [
+            'opponent_id' => $rivalId,
+        ])->assertOk()
+            ->assertJsonPath('pvp.opponent.name', 'Rival');
+
+        $fight = null;
+        for ($i = 0; $i < 12; $i++) {
+            $fight = $this->postJson("/game/player/{$heroId}/pvp/fight", [
+                'skill_id' => 'punch',
+                'dice' => 6,
+                'opponent_dice' => 1,
+            ])->assertOk();
+
+            if ($fight->json('pvpBattle.won')) {
+                break;
+            }
+        }
+
+        $fight->assertJsonPath('pvpBattle.won', true);
+        $this->assertGreaterThan(1000, Player::find($heroId)->pvp_rating);
+        $this->assertGreaterThan(0, Player::find($heroId)->pvp_wins);
+    }
 }

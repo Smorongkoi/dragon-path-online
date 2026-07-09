@@ -57,6 +57,7 @@ button:disabled {
 }
 
 .topbar,
+.mode-switch,
 .hud,
 .battle-layout,
 .lower-layout {
@@ -88,6 +89,28 @@ button:disabled {
 .top-actions button {
     min-height: 38px;
     padding: 0 12px;
+}
+
+.mode-switch {
+    position: fixed;
+    top: 88px;
+    left: 50%;
+    z-index: 22;
+    display: flex;
+    gap: 10px;
+    transform: translateX(-50%);
+}
+
+.mode-switch button {
+    min-height: 48px;
+    padding: 0 18px;
+    background: rgba(12, 18, 29, 0.9);
+    border-color: rgba(126, 210, 255, 0.34);
+}
+
+.mode-switch button.selected {
+    background: #246b45;
+    border-color: #55d68e;
 }
 
 .eyebrow {
@@ -135,7 +158,8 @@ h2 {
 .bars,
 .command-panel,
 .log-panel,
-.class-panel {
+.class-panel,
+.world-panel-card {
     background: rgba(23, 29, 42, 0.88);
     border: 1px solid #2c3548;
     border-radius: 8px;
@@ -277,7 +301,7 @@ input {
     position: fixed;
     left: calc(50% + 110px);
     right: auto;
-    top: 84px;
+    top: 146px;
     bottom: auto;
     z-index: 18;
     width: min(720px, calc(100vw - 470px));
@@ -308,6 +332,13 @@ input {
     display: none;
 }
 
+[data-mode="world"] .pvp-panel,
+[data-mode="battle"] .pvp-panel,
+[data-mode="pvp"] .world-panel,
+[data-mode="pvp"] .battle-panel {
+    display: none;
+}
+
 [data-mode="world"] .canvas-wrap {
     border-color: #5bcf9b;
     background: #d9f7e9;
@@ -316,6 +347,11 @@ input {
 [data-mode="battle"] .canvas-wrap {
     border-color: #7b2d3b;
     background: #120f16;
+}
+
+[data-mode="pvp"] .canvas-wrap {
+    border-color: #d4af37;
+    background: #17111f;
 }
 
 .stat-card,
@@ -371,6 +407,23 @@ input {
     flex-wrap: wrap;
     gap: 8px;
     min-width: 180px;
+}
+
+[data-mode="pvp"] .command-panel {
+    width: min(860px, calc(100vw - 420px));
+}
+
+[data-mode="pvp"] .command-panel .pvp-panel {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+[data-mode="pvp"] #arena-player-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 420px;
 }
 
 [data-mode="battle"] .command-panel .damage-card {
@@ -539,6 +592,37 @@ input {
     overflow: hidden;
 }
 
+.world-panel-card {
+    display: grid;
+    gap: 10px;
+}
+
+.rank-list,
+.chat-list {
+    display: grid;
+    gap: 7px;
+    max-height: 120px;
+    overflow: hidden;
+}
+
+.rank-list p,
+.chat-list p,
+.empty-note {
+    color: #d9e5f5;
+    font-size: 13px;
+}
+
+.chat-list {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.chat-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+}
+
 body.status-hidden .hud {
     display: none;
 }
@@ -548,7 +632,7 @@ body.status-hidden .class-panel {
 }
 
 body.status-hidden .command-panel {
-    top: 92px;
+    top: 106px;
 }
 
 body.menu-hidden .command-panel,

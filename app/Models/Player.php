@@ -23,6 +23,10 @@ class Player extends Model
         'vit',
         'luk',
         'int_stat',
+        'pvp_wins',
+        'pvp_losses',
+        'pvp_rating',
+        'last_seen_at',
         'inventory',
         'class_history',
     ];
@@ -30,5 +34,6 @@ class Player extends Model
     protected $casts = [
         'inventory' => 'array',
         'class_history' => 'array',
+        'last_seen_at' => 'datetime',
     ];
 }

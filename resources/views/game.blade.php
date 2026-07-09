@@ -21,6 +21,11 @@
             </div>
         </section>
 
+        <section class="mode-switch">
+            <button id="monster-mode-button" class="selected" type="button">ตีมอนสเตอร์ เก็บเลเวล</button>
+            <button id="arena-mode-button" type="button">เข้าลานประลอง</button>
+        </section>
+
         <section class="hud left-drawer">
             <div class="hero-panel">
                 <div class="avatar-badge" id="class-badge">คน</div>
@@ -121,6 +126,22 @@
                     </div>
                 </div>
                 <button id="fight-button" class="primary-action battle-panel" type="button" disabled onclick="window.fightAction?.()">โจมตี</button>
+                <div class="panel-block pvp-panel">
+                    <h2>ลานประลอง</h2>
+                    <div id="arena-player-list" class="button-list"></div>
+                    <div class="stat-card">
+                        <div class="stat-card-head">
+                            <strong id="pvp-opponent-name">เลือกคู่ต่อสู้</strong>
+                            <span id="pvp-opponent-stats">ผู้เล่นทุกคนบนโลกสู้กันได้</span>
+                        </div>
+                        <div class="bar-row compact">
+                            <span>HP</span>
+                            <div class="bar monster"><i id="pvp-opponent-hp-bar"></i></div>
+                            <b id="pvp-opponent-hp-text">0/0</b>
+                        </div>
+                    </div>
+                </div>
+                <button id="pvp-fight-button" class="primary-action pvp-panel" type="button" disabled>โจมตีผู้เล่น</button>
             </aside>
         </section>
 
@@ -133,6 +154,18 @@
                 <h2>Class Evolution</h2>
                 <p id="evolution-note">ถึงเลเวล 10 เพื่อปลดล็อกการเปลี่ยนคลาส</p>
                 <div id="class-choices" class="button-list"></div>
+            </div>
+            <div class="world-panel-card">
+                <h2>กระดานโลก PVP</h2>
+                <div id="leaderboard-list" class="rank-list"></div>
+            </div>
+            <div class="world-panel-card chat-card">
+                <h2>แชทโลก</h2>
+                <div id="chat-list" class="chat-list"></div>
+                <div class="chat-form">
+                    <input id="chat-input" maxlength="240" placeholder="พิมพ์ข้อความถึงทุกคน">
+                    <button id="chat-send-button" type="button">ส่ง</button>
+                </div>
             </div>
         </section>
     </main>

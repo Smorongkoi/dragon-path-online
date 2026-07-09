@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CharacterClass;
+use App\Models\ChatMessage;
 use App\Models\ClassEvolution;
 use App\Models\Monster;
 use App\Models\Player;
@@ -34,7 +35,41 @@ class GameController extends Controller
             ]
         );
 
+        $player->forceFill(['last_seen_at' => now()])->save();
+
         return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function world(): JsonResponse
+    {
+        return response()->json($this->worldPayload());
+    }
+
+    public function heartbeat(Player $player): JsonResponse
+    {
+        $player->forceFill(['last_seen_at' => now()])->save();
+
+        return response()->json($this->worldPayload($player->fresh()));
+    }
+
+    public function chat(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:240'],
+        ]);
+
+        $message = trim($data['message']);
+        if ($message === '') {
+            return response()->json(['message' => 'Chat message is empty.'], 422);
+        }
+
+        $player->forceFill(['last_seen_at' => now()])->save();
+        ChatMessage::create([
+            'player_id' => $player->id,
+            'message' => $message,
+        ]);
+
+        return response()->json($this->worldPayload($player->fresh()));
     }
 
     public function rename(Request $request, Player $player): JsonResponse
@@ -208,6 +243,136 @@ class GameController extends Controller
         ]);
     }
 
+    public function startPvp(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'opponent_id' => ['required', 'integer', 'exists:players,id'],
+        ]);
+
+        if ((int) $data['opponent_id'] === $player->id) {
+            return response()->json(['message' => 'You cannot duel yourself.'], 422);
+        }
+
+        $opponent = Player::findOrFail($data['opponent_id']);
+        $pvp = $this->generatePvpEncounter($player->fresh(), $opponent->fresh());
+        $request->session()->put($this->pvpKey($player), $pvp);
+        $player->forceFill(['last_seen_at' => now()])->save();
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function fightPvp(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'skill_id' => ['nullable', 'string', 'exists:skills,id'],
+            'dice' => ['nullable', 'integer', 'between:1,6'],
+            'opponent_dice' => ['nullable', 'integer', 'between:1,6'],
+        ]);
+
+        $pvp = $request->session()->get($this->pvpKey($player));
+        if (! $pvp) {
+            return response()->json(['message' => 'Enter the arena and choose an opponent first.'], 422);
+        }
+
+        $skill = $this->classSkill($player, $data['skill_id'] ?? null);
+        $stats = $this->playerStats($player);
+        $turnNumber = (int) ($pvp['turn'] ?? 1);
+        $playerHp = max(1, (int) $pvp['player']['current_hp']);
+        $playerMp = max(0, (int) $pvp['player']['current_mp']);
+        $opponentHp = max(0, (int) $pvp['opponent']['current_hp']);
+        $opponentMp = max(0, (int) $pvp['opponent']['current_mp']);
+        $turns = [];
+
+        $activeSkill = $this->usableSkill($skill, $playerMp, $pvp, $turnNumber);
+        $manaCost = (int) ($activeSkill?->mana_cost ?? 0);
+        $playerMp = max(0, $playerMp - $manaCost);
+        $skillDamage = ($activeSkill ? $activeSkill->damage + ($player->int_stat * 2) : 0);
+        $baseDamage = max(1, $stats['atk'] + $skillDamage - (int) $pvp['opponent']['def'] + random_int(-3, 6));
+        $skillBonus = $this->skillBonusMultiplier($activeSkill);
+        $baseDamage = max(1, (int) floor($baseDamage * $skillBonus));
+        $dice = $this->rollDice($data['dice'] ?? null);
+        $diceResult = $this->diceResult($dice);
+        $playerDamage = $this->applyDiceDamage($baseDamage, $diceResult);
+        $opponentHp = max(0, $opponentHp - $playerDamage);
+        $attackName = $activeSkill?->name ?? 'Basic Attack';
+
+        if ($activeSkill && $activeSkill->cooldown > 0) {
+            $pvp['cooldowns'][$activeSkill->id] = $turnNumber + $activeSkill->cooldown + 1;
+        }
+
+        $turns[] = [
+            'actor' => 'player',
+            'text' => "{$player->name} rolled {$dice} with {$attackName}: {$diceResult['label']} for {$playerDamage}",
+            'skill' => $activeSkill,
+            'manaCost' => $manaCost,
+            'damage' => $playerDamage,
+            'dice' => $dice,
+            'result' => $diceResult['key'],
+            'label' => $diceResult['label'],
+            'effect' => $diceResult['effect'],
+            'multiplier' => $diceResult['multiplier'],
+            'opponentHp' => $opponentHp,
+            'playerHp' => $playerHp,
+        ];
+
+        if ($opponentHp > 0) {
+            $opponentBaseDamage = max(1, (int) $pvp['opponent']['atk'] - $stats['def'] + random_int(-2, 5));
+            $opponentDice = $this->rollDice($data['opponent_dice'] ?? null);
+            $opponentDiceResult = $this->diceResult($opponentDice);
+            $opponentDamage = $this->applyDiceDamage($opponentBaseDamage, $opponentDiceResult);
+            $playerHp = max(0, $playerHp - $opponentDamage);
+
+            $turns[] = [
+                'actor' => 'opponent',
+                'text' => "{$pvp['opponent']['name']} rolled {$opponentDice}: {$opponentDiceResult['label']} countered for {$opponentDamage}",
+                'damage' => $opponentDamage,
+                'dice' => $opponentDice,
+                'result' => $opponentDiceResult['key'],
+                'label' => $opponentDiceResult['label'],
+                'effect' => $opponentDiceResult['effect'],
+                'multiplier' => $opponentDiceResult['multiplier'],
+                'opponentHp' => $opponentHp,
+                'playerHp' => $playerHp,
+            ];
+        }
+
+        $won = $opponentHp <= 0;
+        $lost = $playerHp <= 0;
+        $pvp['turn'] = $turnNumber + 1;
+        $pvp['player']['current_hp'] = $playerHp;
+        $pvp['player']['current_mp'] = $playerMp;
+        $pvp['opponent']['current_hp'] = $opponentHp;
+        $pvp['opponent']['current_mp'] = $opponentMp;
+
+        if ($won || $lost) {
+            $this->recordPvpResult($player, (int) $pvp['opponent']['id'], $won);
+            $request->session()->forget($this->pvpKey($player));
+        } else {
+            $request->session()->put($this->pvpKey($player), $pvp);
+        }
+
+        $player->forceFill([
+            'hp' => $won || $lost ? $stats['max_hp'] : max(1, $playerHp),
+            'mp' => $won || $lost ? $stats['max_mp'] : $playerMp,
+            'max_hp' => $stats['max_hp'],
+            'max_mp' => $stats['max_mp'],
+            'atk' => $stats['atk'],
+            'def' => $stats['def'],
+            'last_seen_at' => now(),
+        ])->save();
+
+        return response()->json([
+            ...$this->gamePayload($request, $player->fresh()),
+            'pvpBattle' => [
+                'won' => $won,
+                'lost' => $lost,
+                'turns' => $turns,
+                'encounter' => $pvp,
+                'ratingChange' => $won ? 12 : ($lost ? -8 : 0),
+            ],
+        ]);
+    }
+
     public function changeClass(Request $request, Player $player): JsonResponse
     {
         $data = $request->validate([
@@ -245,6 +410,7 @@ class GameController extends Controller
     {
         $skillClassIds = [$player->class_id];
         $encounter = $request->session()->get($this->encounterKey($player));
+        $pvp = $request->session()->get($this->pvpKey($player));
 
         return [
             'player' => $player,
@@ -258,8 +424,96 @@ class GameController extends Controller
                 ->unique('id')
                 ->values(),
             'encounter' => $encounter,
+            'pvp' => $pvp,
+            'world' => $this->worldPayload($player),
             'csrfToken' => csrf_token(),
         ];
+    }
+
+    private function worldPayload(?Player $currentPlayer = null): array
+    {
+        $onlineCutoff = now()->subMinutes(5);
+
+        return [
+            'onlinePlayers' => Player::query()
+                ->select(['id', 'name', 'level', 'class_id', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'last_seen_at'])
+                ->where('last_seen_at', '>=', $onlineCutoff)
+                ->when($currentPlayer, fn ($query) => $query->where('id', '!=', $currentPlayer->id))
+                ->orderByDesc('level')
+                ->orderByDesc('pvp_rating')
+                ->limit(30)
+                ->get(),
+            'leaderboard' => Player::query()
+                ->select(['id', 'name', 'level', 'class_id', 'pvp_wins', 'pvp_losses', 'pvp_rating'])
+                ->orderByDesc('pvp_rating')
+                ->orderByDesc('pvp_wins')
+                ->orderBy('pvp_losses')
+                ->limit(10)
+                ->get(),
+            'chatMessages' => ChatMessage::query()
+                ->with('player:id,name')
+                ->latest()
+                ->limit(30)
+                ->get()
+                ->reverse()
+                ->values()
+                ->map(fn (ChatMessage $message) => [
+                    'id' => $message->id,
+                    'player_id' => $message->player_id,
+                    'player_name' => $message->player?->name ?? 'Unknown',
+                    'message' => $message->message,
+                    'created_at' => $message->created_at?->toIso8601String(),
+                ]),
+        ];
+    }
+
+    private function generatePvpEncounter(Player $player, Player $opponent): array
+    {
+        $playerStats = $this->playerStats($player);
+        $opponentStats = $this->playerStats($opponent);
+
+        return [
+            'id' => uniqid('pvp_', true),
+            'turn' => 1,
+            'cooldowns' => [],
+            'player' => [
+                'id' => $player->id,
+                'name' => $player->name,
+                'level' => $player->level,
+                'class_id' => $player->class_id,
+                'hp' => $playerStats['max_hp'],
+                'current_hp' => $playerStats['max_hp'],
+                'mp' => $playerStats['max_mp'],
+                'current_mp' => min($player->mp, $playerStats['max_mp']),
+                'atk' => $playerStats['atk'],
+                'def' => $playerStats['def'],
+            ],
+            'opponent' => [
+                'id' => $opponent->id,
+                'name' => $opponent->name,
+                'level' => $opponent->level,
+                'class_id' => $opponent->class_id,
+                'hp' => $opponentStats['max_hp'],
+                'current_hp' => $opponentStats['max_hp'],
+                'mp' => $opponentStats['max_mp'],
+                'current_mp' => min($opponent->mp, $opponentStats['max_mp']),
+                'atk' => $opponentStats['atk'],
+                'def' => $opponentStats['def'],
+            ],
+        ];
+    }
+
+    private function recordPvpResult(Player $player, int $opponentId, bool $won): void
+    {
+        $player->refresh();
+        $player->increment($won ? 'pvp_wins' : 'pvp_losses');
+        $player->increment('pvp_rating', $won ? 12 : -8);
+
+        $opponent = Player::find($opponentId);
+        if ($opponent) {
+            $opponent->increment($won ? 'pvp_losses' : 'pvp_wins');
+            $opponent->increment('pvp_rating', $won ? -6 : 10);
+        }
     }
 
     private function generateEncounter(Player $player, int $levelDice, int $countDice): array
@@ -508,5 +762,10 @@ class GameController extends Controller
     private function encounterKey(Player $player): string
     {
         return "encounter_{$player->id}";
+    }
+
+    private function pvpKey(Player $player): string
+    {
+        return "pvp_{$player->id}";
     }
 }

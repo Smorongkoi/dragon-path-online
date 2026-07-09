@@ -56,7 +56,7 @@ Deploy flow:
 6. Set the build command to:
 
 ```bash
-composer install --no-dev --optimize-autoloader && npm ci && npm run build
+composer install --no-dev --optimize-autoloader && npm ci --include=dev --include=optional && npm run build
 ```
 
 7. Set the start command to:

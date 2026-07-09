@@ -12,6 +12,8 @@ npm run build
 Make sure these files are committed:
 
 - `railway.json`
+- `Dockerfile`
+- `.dockerignore`
 - `scripts/railway-start.sh`
 - `DEPLOYMENT.md`
 - `README.md`

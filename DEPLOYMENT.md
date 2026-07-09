@@ -53,10 +53,10 @@ Deploy flow:
 3. Add a MySQL database in the same Railway project.
 4. Copy the MySQL connection variables into the Laravel service.
 5. Generate `APP_KEY` locally with `php artisan key:generate --show` and add it to Railway variables.
-6. Set the build command to:
+6. Railway should detect `Dockerfile` automatically. If it does not, set the builder to `DOCKERFILE` and Dockerfile path to:
 
-```bash
-composer install --no-dev --optimize-autoloader && npm ci --include=dev --include=optional && npm run build
+```text
+Dockerfile
 ```
 
 7. Set the start command to:

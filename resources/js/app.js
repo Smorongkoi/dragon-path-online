@@ -21,6 +21,8 @@ const state = {
     encounterResolved: false,
     scene: null,
     mode: 'world',
+    knownOnlineIds: new Set(),
+    seenChatIds: new Set(),
     selectedOpponentId: null,
     pvpResolved: false,
     worldTimer: null,
@@ -82,6 +84,8 @@ const els = {
     chatList: document.getElementById('chat-list'),
     chatInput: document.getElementById('chat-input'),
     chatSendButton: document.getElementById('chat-send-button'),
+    totalPlayersText: document.getElementById('total-players-text'),
+    onlinePlayersText: document.getElementById('online-players-text'),
 };
 
 class BattleScene extends Phaser.Scene {
@@ -250,6 +254,27 @@ class BattleScene extends Phaser.Scene {
         if (effect === 'dodge') return ' DODGE';
         return '';
     }
+
+    showSpeech(message, side = 'player') {
+        const target = side === 'player' ? this.player : this.monster;
+        const bubble = this.add.text(target.x, target.y - 132, message, {
+            fontFamily: 'Arial',
+            fontSize: '17px',
+            color: '#10131c',
+            backgroundColor: '#ffffff',
+            padding: { left: 12, right: 12, top: 8, bottom: 8 },
+            wordWrap: { width: 260 },
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: bubble,
+            y: bubble.y - 18,
+            alpha: 0,
+            duration: 5000,
+            ease: 'Sine.easeIn',
+            onComplete: () => bubble.destroy(),
+        });
+    }
 }
 
 new Phaser.Game({
@@ -324,9 +349,8 @@ function setPayload(payload) {
     const onlinePlayers = payload.world?.onlinePlayers || [];
     state.selectedOpponentId = payload.pvp?.opponent?.id
         || (onlinePlayers.some((player) => player.id === state.selectedOpponentId) ? state.selectedOpponentId : onlinePlayers[0]?.id ?? null);
+    rememberWorldState(payload.world || {}, false);
     render();
-
-    if (battle.won || battle.playerDefeated) {
 }
 
 function render() {
@@ -484,6 +508,13 @@ function renderWorldPanels(world) {
     const leaderboard = world.leaderboard || [];
     const chatMessages = world.chatMessages || [];
 
+    if (els.totalPlayersText) {
+        els.totalPlayersText.textContent = `ผู้เล่นทั้งหมด ${world.totalPlayers ?? 0}`;
+    }
+    if (els.onlinePlayersText) {
+        els.onlinePlayersText.textContent = `ออนไลน์ ${world.onlineCount ?? onlinePlayers.length}`;
+    }
+
     if (els.arenaPlayerList) {
         els.arenaPlayerList.innerHTML = '';
         if (onlinePlayers.length === 0) {
@@ -525,6 +556,35 @@ function renderWorldPanels(world) {
     }
 }
 
+function rememberWorldState(world, notify = true) {
+    const onlinePlayers = world.onlinePlayers || [];
+    const chatMessages = world.chatMessages || [];
+    const nextOnlineIds = new Set(onlinePlayers.map((player) => player.id));
+
+    if (notify && state.knownOnlineIds.size > 0) {
+        onlinePlayers.forEach((player) => {
+            if (!state.knownOnlineIds.has(player.id)) {
+                notifyWorld(`${player.name} ออนไลน์แล้ว`);
+            }
+        });
+    }
+    state.knownOnlineIds = nextOnlineIds;
+
+    chatMessages.forEach((message) => {
+        if (state.seenChatIds.has(message.id)) return;
+        if (notify) {
+            const isSelf = message.player_id === state.payload?.player?.id;
+            state.scene?.showSpeech(message.message, isSelf ? 'player' : 'monster');
+        }
+        state.seenChatIds.add(message.id);
+    });
+}
+
+function notifyWorld(message) {
+    log(message);
+    state.scene?.showSpeech(message, 'monster');
+}
+
 function renderPvpPanel(pvp, skills) {
     const opponent = pvp?.opponent || (state.payload.world?.onlinePlayers || []).find((player) => player.id === state.selectedOpponentId);
     const hp = opponent?.current_hp ?? opponent?.hp ?? 0;
@@ -550,7 +610,9 @@ function setMode(mode) {
     els.monsterModeButton?.classList.toggle('selected', mode !== 'pvp');
     els.arenaModeButton?.classList.toggle('selected', mode === 'pvp');
     state.scene?.setMode(mode === 'pvp' ? 'battle' : mode);
-    render();
+    if (state.payload) {
+        render();
+    }
 }
 
 async function startPvp(opponentId = state.selectedOpponentId) {
@@ -616,6 +678,7 @@ async function refreshWorld() {
     try {
         const world = await request(`/game/player/${state.payload.player.id}/heartbeat`, { method: 'POST', body: JSON.stringify({}) });
         state.payload.world = world;
+        rememberWorldState(world, true);
         renderWorldPanels(world);
         renderPvpPanel(state.payload.pvp, state.payload.skills || []);
     } catch (error) {
@@ -641,6 +704,7 @@ async function sendChat() {
         });
         els.chatInput.value = '';
         state.payload.world = world;
+        rememberWorldState(world, true);
         renderWorldPanels(world);
     } catch (error) {
         log(error.message);
@@ -748,7 +812,6 @@ function showBattle(battle) {
     }
     if (battle.levelSummary.leveledUp) {
         log(`Level Up! ตอนนี้เลเวล ${battle.levelSummary.currentLevel}`);
-    }
     }
     battle.turns.slice(-4).forEach((turn, index) => {
         window.setTimeout(() => {

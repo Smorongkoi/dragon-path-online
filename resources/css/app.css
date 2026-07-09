@@ -216,6 +216,32 @@ input {
     color: #d6e7ff;
 }
 
+.evolution-strip {
+    display: grid;
+    gap: 8px;
+    margin: 10px 0;
+    padding: 10px 0;
+    border-top: 1px solid #2c3548;
+    border-bottom: 1px solid #2c3548;
+}
+
+.evolution-strip p {
+    color: #aebbd0;
+    font-size: 13px;
+}
+
+.evolution-strip .button-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.evolution-strip .button-list button {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 13px;
+}
+
 .bars {
     display: grid;
     gap: 12px;

@@ -17,6 +17,8 @@
             <div class="top-actions">
                 <button id="toggle-status-button" type="button">ข้อมูล</button>
                 <button id="toggle-menu-button" type="button">คำสั่ง</button>
+                <div class="save-pill" id="total-players-text">ผู้เล่นทั้งหมด 0</div>
+                <div class="save-pill" id="online-players-text">ออนไลน์ 0</div>
                 <div class="save-pill" id="save-status">Loading</div>
             </div>
         </section>
@@ -33,6 +35,11 @@
                     <div class="name-row">
                         <input id="player-name" maxlength="60" value="นักผจญภัย">
                         <button id="rename-button" type="button">บันทึกชื่อ</button>
+                    </div>
+                    <div class="evolution-strip">
+                        <strong>Class Evolution</strong>
+                        <p id="evolution-note">ถึงเลเวล 10 เพื่อปลดล็อกการเปลี่ยนคลาส</p>
+                        <div id="class-choices" class="button-list"></div>
                     </div>
                     <p id="class-name">Class: คนปกติ</p>
                     <div class="stat-grid">
@@ -149,11 +156,6 @@
             <div class="log-panel">
                 <h2>Battle Log</h2>
                 <div id="battle-log"></div>
-            </div>
-            <div class="class-panel left-drawer-extra">
-                <h2>Class Evolution</h2>
-                <p id="evolution-note">ถึงเลเวล 10 เพื่อปลดล็อกการเปลี่ยนคลาส</p>
-                <div id="class-choices" class="button-list"></div>
             </div>
             <div class="world-panel-card">
                 <h2>กระดานโลก PVP</h2>

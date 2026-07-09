@@ -373,6 +373,8 @@ class GameFlowTest extends TestCase
         $this->postJson("/game/player/{$heroId}/chat", [
             'message' => 'hello world',
         ])->assertOk()
+            ->assertJsonPath('totalPlayers', 2)
+            ->assertJsonPath('onlineCount', 2)
             ->assertJsonPath('chatMessages.0.message', 'hello world');
 
         $this->postJson("/game/player/{$heroId}/pvp/start", [

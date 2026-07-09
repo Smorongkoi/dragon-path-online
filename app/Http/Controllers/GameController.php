@@ -435,6 +435,8 @@ class GameController extends Controller
         $onlineCutoff = now()->subMinutes(5);
 
         return [
+            'totalPlayers' => Player::count(),
+            'onlineCount' => Player::where('last_seen_at', '>=', $onlineCutoff)->count(),
             'onlinePlayers' => Player::query()
                 ->select(['id', 'name', 'level', 'class_id', 'pvp_wins', 'pvp_losses', 'pvp_rating', 'last_seen_at'])
                 ->where('last_seen_at', '>=', $onlineCutoff)

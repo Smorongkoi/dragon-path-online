@@ -141,6 +141,7 @@
                 <button id="fight-button" class="primary-action battle-panel" type="button" disabled onclick="window.fightAction?.()">โจมตี</button>
                 <div class="panel-block pvp-panel">
                     <h2>ลานประลอง</h2>
+                    <button id="bot-pvp-button" class="secondary-action" type="button">สู้กับบอท</button>
                     <div id="arena-player-list" class="button-list"></div>
                     <div class="stat-card">
                         <div class="stat-card-head">
@@ -166,6 +167,10 @@
             <div class="world-panel-card">
                 <h2>กระดานโลก PVP</h2>
                 <div id="leaderboard-list" class="rank-list"></div>
+            </div>
+            <div class="world-panel-card">
+                <h2>นักตบบอท</h2>
+                <div id="bot-leaderboard-list" class="rank-list"></div>
             </div>
             <div class="world-panel-card chat-card">
                 <h2>แชทโลก</h2>

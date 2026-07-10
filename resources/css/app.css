@@ -647,6 +647,14 @@ input {
     font-size: 18px;
 }
 
+.secondary-action {
+    min-height: 54px;
+    padding: 0 16px;
+    background: linear-gradient(180deg, #7c3aed, #4c1d95);
+    border-color: #c4b5fd;
+    font-weight: 800;
+}
+
 .lower-layout {
     position: fixed;
     left: 16px;

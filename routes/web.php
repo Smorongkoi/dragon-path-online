@@ -14,5 +14,6 @@ Route::patch('/game/player/{player}/element', [GameController::class, 'chooseEle
 Route::post('/game/player/{player}/roll-encounter', [GameController::class, 'rollEncounter'])->name('game.roll-encounter');
 Route::post('/game/player/{player}/fight', [GameController::class, 'fight'])->name('game.fight');
 Route::post('/game/player/{player}/pvp/start', [GameController::class, 'startPvp'])->name('game.pvp.start');
+Route::post('/game/player/{player}/pvp/bot/start', [GameController::class, 'startBotPvp'])->name('game.pvp.bot.start');
 Route::post('/game/player/{player}/pvp/fight', [GameController::class, 'fightPvp'])->name('game.pvp.fight');
 Route::post('/game/player/{player}/change-class', [GameController::class, 'changeClass'])->name('game.change-class');

@@ -88,7 +88,9 @@ const els = {
     pvpOpponentHpBar: document.getElementById('pvp-opponent-hp-bar'),
     pvpOpponentHpText: document.getElementById('pvp-opponent-hp-text'),
     pvpFightButton: document.getElementById('pvp-fight-button'),
+    botPvpButton: document.getElementById('bot-pvp-button'),
     leaderboardList: document.getElementById('leaderboard-list'),
+    botLeaderboardList: document.getElementById('bot-leaderboard-list'),
     chatList: document.getElementById('chat-list'),
     chatInput: document.getElementById('chat-input'),
     chatSendButton: document.getElementById('chat-send-button'),
@@ -991,6 +993,7 @@ function setBar(el, value, max) {
 function renderWorldPanels(world) {
     const onlinePlayers = world.onlinePlayers || [];
     const leaderboard = world.leaderboard || [];
+    const botLeaderboard = world.botLeaderboard || [];
     const chatMessages = world.chatMessages || [];
 
     if (els.totalPlayersText) {
@@ -1029,6 +1032,15 @@ function renderWorldPanels(world) {
             const row = document.createElement('p');
             row.textContent = `#${index + 1} ${player.name} | ${player.pvp_rating} | W ${player.pvp_wins} / L ${player.pvp_losses}`;
             els.leaderboardList.appendChild(row);
+        });
+    }
+
+    if (els.botLeaderboardList) {
+        els.botLeaderboardList.innerHTML = '';
+        botLeaderboard.forEach((player, index) => {
+            const row = document.createElement('p');
+            row.textContent = `#${index + 1} ${player.name} | ${player.bot_rating} | W ${player.bot_wins} / L ${player.bot_losses}`;
+            els.botLeaderboardList.appendChild(row);
         });
     }
 
@@ -1131,6 +1143,25 @@ async function startPvp() {
     }
 }
 
+async function startBotPvp() {
+    await ensurePayload();
+
+    const { player } = state.payload;
+    try {
+        const payload = await request(`/game/player/${player.id}/pvp/bot/start`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+        resetBattleReadout();
+        state.pvpResolved = false;
+        setPayload(payload);
+        setMode('pvp');
+        log(`เริ่มสู้กับบอท: ${payload.pvp.opponent.element_label} ${payload.pvp.opponent.name} LV ${payload.pvp.opponent.level}`);
+    } catch (error) {
+        log(error.message);
+    }
+}
+
 async function fightPvp() {
     await ensurePayload();
     const { player } = state.payload;
@@ -1164,7 +1195,7 @@ function showPvpBattle(battle) {
     });
 
     if (battle.won || battle.lost) {
-        log(`${battle.won ? 'ชนะ PVP' : 'แพ้ PVP'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
+        log(`${battle.isBot ? 'บอท PVP' : 'PVP'}: ${battle.won ? 'ชนะ' : 'แพ้'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
         playSfx(battle.won ? 'victory' : 'hit');
         window.setTimeout(() => refreshWorld(), 800);
     }
@@ -1430,6 +1461,10 @@ els.monsterModeButton?.addEventListener('click', () => {
 els.arenaModeButton?.addEventListener('click', () => {
     playSfx('click');
     startPvp();
+});
+els.botPvpButton?.addEventListener('click', () => {
+    playSfx('click');
+    startBotPvp();
 });
 els.pvpFightButton?.addEventListener('click', fightPvp);
 els.chatSendButton?.addEventListener('click', sendChat);

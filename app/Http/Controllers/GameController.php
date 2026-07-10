@@ -340,6 +340,20 @@ class GameController extends Controller
         return response()->json($this->gamePayload($request, $freshPlayer->fresh()));
     }
 
+    public function startBotPvp(Request $request, Player $player): JsonResponse
+    {
+        $pvp = $this->generateBotPvpEncounter($player->fresh());
+
+        $player->forceFill([
+            'last_seen_at' => now(),
+            'pvp_queue_at' => null,
+            'pvp_match' => null,
+        ])->save();
+        $request->session()->put($this->pvpKey($player), $pvp);
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
     public function fightPvp(Request $request, Player $player): JsonResponse
     {
         $data = $request->validate([
@@ -434,15 +448,23 @@ class GameController extends Controller
         $pvp['opponent']['current_mp'] = $opponentMp;
 
         if ($won || $lost) {
-            $this->recordPvpResult($player, (int) $pvp['opponent']['id'], $won);
+            if ($pvp['is_bot'] ?? false) {
+                $this->recordBotPvpResult($player, $won);
+            } else {
+                $this->recordPvpResult($player, (int) $pvp['opponent']['id'], $won);
+            }
             $request->session()->forget($this->pvpKey($player));
-            Player::whereIn('id', [$player->id, (int) $pvp['opponent']['id']])->update([
-                'pvp_queue_at' => null,
-                'pvp_match' => null,
-            ]);
+            if (! ($pvp['is_bot'] ?? false)) {
+                Player::whereIn('id', [$player->id, (int) $pvp['opponent']['id']])->update([
+                    'pvp_queue_at' => null,
+                    'pvp_match' => null,
+                ]);
+            }
         } else {
             $request->session()->put($this->pvpKey($player), $pvp);
-            $player->forceFill(['pvp_match' => $pvp])->save();
+            if (! ($pvp['is_bot'] ?? false)) {
+                $player->forceFill(['pvp_match' => $pvp])->save();
+            }
         }
 
         $player->forceFill([
@@ -461,9 +483,10 @@ class GameController extends Controller
             'pvpBattle' => [
                 'won' => $won,
                 'lost' => $lost,
+                'isBot' => (bool) ($pvp['is_bot'] ?? false),
                 'turns' => $turns,
                 'encounter' => $pvp,
-                'ratingChange' => $won ? 12 : ($lost ? -8 : 0),
+                'ratingChange' => ($pvp['is_bot'] ?? false) ? ($won ? 8 : ($lost ? -4 : 0)) : ($won ? 12 : ($lost ? -8 : 0)),
             ],
         ]);
     }
@@ -555,6 +578,13 @@ class GameController extends Controller
                 ->orderBy('pvp_losses')
                 ->limit(10)
                 ->get(),
+            'botLeaderboard' => Player::query()
+                ->select(['id', 'name', 'level', 'class_id', 'element', 'bot_wins', 'bot_losses', 'bot_rating'])
+                ->orderByDesc('bot_rating')
+                ->orderByDesc('bot_wins')
+                ->orderBy('bot_losses')
+                ->limit(10)
+                ->get(),
             'chatMessages' => ChatMessage::query()
                 ->with('player:id,name')
                 ->latest()
@@ -579,6 +609,7 @@ class GameController extends Controller
 
         return [
             'id' => uniqid('pvp_', true),
+            'is_bot' => false,
             'turn' => 1,
             'cooldowns' => [],
             'player' => [
@@ -614,6 +645,54 @@ class GameController extends Controller
         ];
     }
 
+    private function generateBotPvpEncounter(Player $player): array
+    {
+        $playerStats = $this->playerStats($player);
+        $botLevel = max(1, min(100, $player->level + random_int(-2, 2)));
+        $classes = CharacterClass::where('milestone_level', '<=', $botLevel)->pluck('id')->all();
+        $botClassId = $classes[array_rand($classes)] ?? 'normal';
+        $botElement = ['earth', 'water', 'wind', 'fire'][array_rand(['earth', 'water', 'wind', 'fire'])];
+        $botStats = $this->botStats($botLevel, $botClassId);
+
+        return [
+            'id' => uniqid('bot_pvp_', true),
+            'is_bot' => true,
+            'turn' => 1,
+            'cooldowns' => [],
+            'player' => [
+                'id' => $player->id,
+                'name' => $player->name,
+                'level' => $player->level,
+                'class_id' => $player->class_id,
+                'element' => $player->element,
+                'element_label' => $this->elementLabel($player->element),
+                'element_color' => $this->elementColor($player->element),
+                'hp' => $playerStats['max_hp'],
+                'current_hp' => $playerStats['max_hp'],
+                'mp' => $playerStats['max_mp'],
+                'current_mp' => min($player->mp, $playerStats['max_mp']),
+                'atk' => $playerStats['atk'],
+                'def' => $playerStats['def'],
+            ],
+            'opponent' => [
+                'id' => 'bot',
+                'name' => 'Bot '.random_int(100, 999),
+                'level' => $botLevel,
+                'class_id' => $botClassId,
+                'element' => $botElement,
+                'element_label' => $this->elementLabel($botElement),
+                'element_color' => $this->elementColor($botElement),
+                'hp' => $botStats['max_hp'],
+                'current_hp' => $botStats['max_hp'],
+                'mp' => $botStats['max_mp'],
+                'current_mp' => $botStats['max_mp'],
+                'atk' => $botStats['atk'],
+                'def' => $botStats['def'],
+                'bot' => true,
+            ],
+        ];
+    }
+
     private function recordPvpResult(Player $player, int $opponentId, bool $won): void
     {
         $player->refresh();
@@ -625,6 +704,13 @@ class GameController extends Controller
             $opponent->increment($won ? 'pvp_losses' : 'pvp_wins');
             $opponent->increment('pvp_rating', $won ? -6 : 10);
         }
+    }
+
+    private function recordBotPvpResult(Player $player, bool $won): void
+    {
+        $player->refresh();
+        $player->increment($won ? 'bot_wins' : 'bot_losses');
+        $player->increment('bot_rating', $won ? 8 : -4);
     }
 
     private function generateEncounter(Player $player, int $levelDice, int $countDice, ?string $forcedElement = null): array
@@ -795,6 +881,18 @@ class GameController extends Controller
             'max_mp' => 30 + ($level - 1) * 4 + (int) ($class?->mp_bonus ?? 0) + ($player->int_stat * 3),
             'atk' => 10 + ($level - 1) * 3 + (int) ($class?->atk_bonus ?? 0) + ($player->atk_stat * 2),
             'def' => 5 + ($level - 1) * 2 + (int) ($class?->def_bonus ?? 0) + $player->vit,
+        ];
+    }
+
+    private function botStats(int $level, string $classId): array
+    {
+        $class = CharacterClass::find($classId);
+
+        return [
+            'max_hp' => 95 + ($level - 1) * 11 + (int) ($class?->hp_bonus ?? 0),
+            'max_mp' => 28 + ($level - 1) * 4 + (int) ($class?->mp_bonus ?? 0),
+            'atk' => 9 + ($level - 1) * 3 + (int) ($class?->atk_bonus ?? 0),
+            'def' => 4 + ($level - 1) * 2 + (int) ($class?->def_bonus ?? 0),
         ];
     }
 

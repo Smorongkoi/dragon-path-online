@@ -453,4 +453,41 @@ class GameFlowTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('message', 'ต้องมีผู้เล่นอื่นออนไลน์ก่อนถึงจะเข้าลานประลองได้');
     }
+
+    public function test_bot_pvp_uses_separate_leaderboard_from_world_pvp(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $hero = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'bot-pvp-token',
+            'name' => 'Bot Hunter',
+        ])->assertOk();
+
+        $heroId = $hero->json('player.id');
+
+        $this->postJson("/game/player/{$heroId}/pvp/bot/start", [])
+            ->assertOk()
+            ->assertJsonPath('pvp.is_bot', true);
+
+        $fight = null;
+        for ($i = 0; $i < 40; $i++) {
+            $fight = $this->postJson("/game/player/{$heroId}/pvp/fight", [
+                'skill_id' => 'punch',
+                'dice' => 6,
+                'opponent_dice' => 1,
+            ])->assertOk();
+
+            if ($fight->json('pvpBattle.won')) {
+                break;
+            }
+        }
+
+        $fight->assertJsonPath('pvpBattle.won', true)
+            ->assertJsonPath('pvpBattle.isBot', true);
+
+        $player = Player::find($heroId);
+        $this->assertSame(1000, $player->pvp_rating);
+        $this->assertGreaterThan(1000, $player->bot_rating);
+        $this->assertGreaterThan(0, $player->bot_wins);
+    }
 }

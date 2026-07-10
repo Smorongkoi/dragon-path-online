@@ -197,6 +197,7 @@
                     <button id="auto-bot-button" type="button">Auto บอท</button>
                     <button id="auto-continue-once-button" type="button">สู้ต่อ 1</button>
                     <button id="auto-return-button" type="button">กลับโลก</button>
+                    <button id="recover-button" type="button">พักฟื้น</button>
                     <button id="auto-stop-button" type="button" disabled>หยุด</button>
                     <span id="auto-farm-status">พร้อมฟาร์ม</span>
                 </div>

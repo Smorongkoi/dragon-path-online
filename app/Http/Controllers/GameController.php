@@ -174,7 +174,11 @@ class GameController extends Controller
 
         $skill = $this->classSkill($player, $data['skill_id'] ?? null);
         $stats = $this->playerStats($player);
-        $playerHp = $player->hp > 0 ? $player->hp : $stats['max_hp'];
+        if ($player->hp <= 0) {
+            return response()->json(['message' => 'HP หมดแล้ว กดพักฟื้นก่อนออกฟาร์มต่อ'], 422);
+        }
+
+        $playerHp = min($player->hp, $stats['max_hp']);
         $playerMp = min($player->mp, $stats['max_mp']);
         $turns = [];
 
@@ -279,7 +283,7 @@ class GameController extends Controller
         $mpGainedFromProgression = max(0, $freshStats['max_mp'] - $stats['max_mp']);
 
         $player->forceFill([
-            'hp' => $won ? $freshStats['max_hp'] : max(1, $playerHp),
+            'hp' => $won ? max(1, $playerHp) : max(0, $playerHp),
             'mp' => min($freshStats['max_mp'], $playerMp + $mpGainedFromProgression),
             'max_hp' => $freshStats['max_hp'],
             'max_mp' => $freshStats['max_mp'],
@@ -409,7 +413,11 @@ class GameController extends Controller
         $skill = $this->classSkill($player, $data['skill_id'] ?? null);
         $stats = $this->playerStats($player);
         $turnNumber = (int) ($pvp['turn'] ?? 1);
-        $playerHp = max(1, (int) $pvp['player']['current_hp']);
+        $playerHp = max(0, (int) $pvp['player']['current_hp']);
+        if ($playerHp <= 0) {
+            return response()->json(['message' => 'HP หมดแล้ว กดพักฟื้นก่อนสู้ต่อ'], 422);
+        }
+
         $playerMp = max(0, (int) $pvp['player']['current_mp']);
         $opponentHp = max(0, (int) $pvp['opponent']['current_hp']);
         $opponentMp = max(0, (int) $pvp['opponent']['current_mp']);
@@ -507,8 +515,8 @@ class GameController extends Controller
         }
 
         $player->forceFill([
-            'hp' => $won || $lost ? $stats['max_hp'] : max(1, $playerHp),
-            'mp' => $won || $lost ? $stats['max_mp'] : $playerMp,
+            'hp' => $lost ? 0 : max(1, $playerHp),
+            'mp' => $playerMp,
             'max_hp' => $stats['max_hp'],
             'max_mp' => $stats['max_mp'],
             'atk' => $stats['atk'],
@@ -558,6 +566,23 @@ class GameController extends Controller
             'max_mp' => $stats['max_mp'],
             'atk' => $stats['atk'],
             'def' => $stats['def'],
+        ])->save();
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
+    public function recover(Request $request, Player $player): JsonResponse
+    {
+        $stats = $this->playerStats($player);
+
+        $player->forceFill([
+            'hp' => $stats['max_hp'],
+            'mp' => $stats['max_mp'],
+            'max_hp' => $stats['max_hp'],
+            'max_mp' => $stats['max_mp'],
+            'atk' => $stats['atk'],
+            'def' => $stats['def'],
+            'last_seen_at' => now(),
         ])->save();
 
         return response()->json($this->gamePayload($request, $player->fresh()));
@@ -661,7 +686,7 @@ class GameController extends Controller
                 'element_label' => $this->elementLabel($player->element),
                 'element_color' => $this->elementColor($player->element),
                 'hp' => $playerStats['max_hp'],
-                'current_hp' => $playerStats['max_hp'],
+                'current_hp' => min($player->hp, $playerStats['max_hp']),
                 'mp' => $playerStats['max_mp'],
                 'current_mp' => min($player->mp, $playerStats['max_mp']),
                 'atk' => $playerStats['atk'],
@@ -676,7 +701,7 @@ class GameController extends Controller
                 'element_label' => $this->elementLabel($opponent->element),
                 'element_color' => $this->elementColor($opponent->element),
                 'hp' => $opponentStats['max_hp'],
-                'current_hp' => $opponentStats['max_hp'],
+                'current_hp' => min($opponent->hp, $opponentStats['max_hp']),
                 'mp' => $opponentStats['max_mp'],
                 'current_mp' => min($opponent->mp, $opponentStats['max_mp']),
                 'atk' => $opponentStats['atk'],
@@ -708,7 +733,7 @@ class GameController extends Controller
                 'element_label' => $this->elementLabel($player->element),
                 'element_color' => $this->elementColor($player->element),
                 'hp' => $playerStats['max_hp'],
-                'current_hp' => $playerStats['max_hp'],
+                'current_hp' => min($player->hp, $playerStats['max_hp']),
                 'mp' => $playerStats['max_mp'],
                 'current_mp' => min($player->mp, $playerStats['max_mp']),
                 'atk' => $playerStats['atk'],

@@ -623,4 +623,41 @@ class GameFlowTest extends TestCase
         $this->assertGreaterThan(1000, $player->bot_rating);
         $this->assertGreaterThan(0, $player->bot_wins);
     }
+
+    public function test_player_must_recover_after_hp_is_empty(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $player = Player::create([
+            'browser_token' => 'recover-token',
+            'name' => 'Recover Tester',
+            'level' => 10,
+            'class_id' => 'mage',
+            'exp' => 0,
+            'hp' => 0,
+            'max_hp' => 218,
+            'mp' => 0,
+            'max_mp' => 111,
+            'atk' => 55,
+            'def' => 25,
+            'inventory' => [],
+            'class_history' => ['normal', 'mage'],
+        ]);
+
+        $this->postJson("/game/player/{$player->id}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 1,
+        ])->assertOk();
+
+        $this->postJson("/game/player/{$player->id}/fight", [
+            'skill_id' => 'fireball',
+            'dice' => 6,
+            'monster_dice' => 1,
+        ])->assertStatus(422);
+
+        $this->postJson("/game/player/{$player->id}/recover", [])
+            ->assertOk()
+            ->assertJsonPath('player.hp', 218)
+            ->assertJsonPath('player.mp', 111);
+    }
 }

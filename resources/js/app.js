@@ -118,6 +118,7 @@ const els = {
     autoBotButton: document.getElementById('auto-bot-button'),
     autoContinueOnceButton: document.getElementById('auto-continue-once-button'),
     autoReturnButton: document.getElementById('auto-return-button'),
+    recoverButton: document.getElementById('recover-button'),
     autoStopButton: document.getElementById('auto-stop-button'),
     autoFarmStatus: document.getElementById('auto-farm-status'),
 };
@@ -1469,6 +1470,36 @@ function readAutoTargetRounds() {
     return Math.max(1, Math.min(99, Number.isNaN(rounds) ? 1 : rounds));
 }
 
+function autoHpThresholdPercent(player = state.payload?.player) {
+    const vit = Number(player?.vit || 0);
+    return Math.max(8, 35 - (vit * 2));
+}
+
+function playerHpPercent(player = state.payload?.player) {
+    const maxHp = Math.max(1, Number(player?.max_hp || 1));
+    return (Number(player?.hp || 0) / maxHp) * 100;
+}
+
+function canContinueAutoFarm() {
+    const player = state.payload?.player;
+    if (!player) return false;
+
+    if (Number(player.hp || 0) <= 0) {
+        setMode('world');
+        stopAutoFarm('HP หมด กลับหน้าโลกแล้ว กดพักฟื้นเพื่อฟาร์มต่อ');
+        return false;
+    }
+
+    const threshold = autoHpThresholdPercent(player);
+    if (playerHpPercent(player) <= threshold) {
+        setMode('world');
+        stopAutoFarm(`HP ต่ำกว่า ${threshold}% ตามค่า VIT (${player.vit || 0}) กดพักฟื้นก่อนฟาร์มต่อ`);
+        return false;
+    }
+
+    return true;
+}
+
 function updateAutoFarmUi() {
     const auto = state.autoFarm;
     const active = auto.active;
@@ -1570,6 +1601,7 @@ async function runAutoStep() {
 
 async function runAutoMonsterStep() {
     await ensurePayload();
+    if (!canContinueAutoFarm()) return;
 
     const livingMonsters = state.payload.encounter?.monsters?.filter((monster) => monster.current_hp > 0) || [];
     if (livingMonsters.length === 0 || state.mode !== 'battle') {
@@ -1590,6 +1622,7 @@ async function runAutoMonsterStep() {
 
 async function runAutoBotStep() {
     await ensurePayload();
+    if (!canContinueAutoFarm()) return;
 
     if (!state.payload.pvp || !state.payload.pvp.is_bot || state.pvpResolved) {
         await startBotPvp();
@@ -1682,6 +1715,13 @@ function showPvpBattle(battle) {
         playSfx(battle.won ? 'victory' : 'hit');
         window.setTimeout(async () => {
             await refreshWorld();
+            if (battle.isBot && battle.lost) {
+                setMode('world');
+                if (state.autoFarm.active && state.autoFarm.type === 'bot') {
+                    stopAutoFarm('HP หมดจากบอท PVP กลับหน้าโลกแล้ว กดพักฟื้นเพื่อฟาร์มต่อ');
+                }
+                return;
+            }
             if (battle.isBot && state.autoFarm.active && state.autoFarm.type === 'bot') {
                 completeAutoRound('bot');
             } else if (battle.isBot && els.autoFarmStatus) {
@@ -1962,6 +2002,26 @@ async function rename() {
     log(`บันทึกชื่อ ${name} แล้ว`);
 }
 
+async function recoverPlayer() {
+    await ensurePayload();
+    const { player } = state.payload;
+
+    try {
+        const payload = await request(`/game/player/${player.id}/recover`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+        setPayload(payload);
+        setMode('world');
+        log('พักฟื้นสำเร็จ: HP และ MP เต็มแล้ว');
+        if (els.autoFarmStatus) {
+            els.autoFarmStatus.textContent = 'พร้อมฟาร์มต่อ';
+        }
+    } catch (error) {
+        log(error.message);
+    }
+}
+
 function log(message) {
     const row = document.createElement('p');
     row.textContent = message;
@@ -2020,6 +2080,11 @@ els.autoReturnButton?.addEventListener('click', () => {
     if (state.autoFarm.active) stopAutoFarm('หยุด Auto แล้วกลับหน้าโลก');
     setMode('world');
     refreshWorld();
+});
+els.recoverButton?.addEventListener('click', () => {
+    playSfx('click');
+    if (state.autoFarm.active) stopAutoFarm('หยุด Auto เพื่อพักฟื้น');
+    recoverPlayer();
 });
 els.autoStopButton?.addEventListener('click', () => {
     playSfx('click');

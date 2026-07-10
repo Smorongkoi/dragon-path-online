@@ -967,7 +967,7 @@ BattleScene.prototype.setMonster = function setPixelMonster(monster) {
     }
 
     this.monster.clearTint();
-    this.monster.setFlipX(true);
+    this.monster.setFlipX(false);
     this.monster.setAlpha(1).setAngle(0).setScale(this.textures.exists('monsterSheet') ? (monster.is_boss ? 1.05 : 0.88) : 2.4);
     this.monsterName.setText(`${element.fullLabel} ${monster.name} LV ${monster.level}`);
     this.monsterName.setColor(element.color);

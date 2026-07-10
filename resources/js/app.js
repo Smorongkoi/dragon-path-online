@@ -156,6 +156,8 @@ const monsterFamilyRows = {
     wyvern: 5,
     default: 0,
 };
+const mapGridColumns = 14;
+const mapGridRows = 7;
 
 const audio = {
     ctx: null,
@@ -677,13 +679,29 @@ BattleScene.prototype.createSceneLayers = function createSceneLayers() {
     this.createTileTextures();
     this.bg = this.add.rectangle(400, 250, 800, 500, 0x7dd3fc);
     this.sun = this.add.circle(170, 130, 58, 0xffd166, 0.72);
+    this.worldBaseTiles = [];
+    this.dungeonBaseTiles = [];
+    this.pvpBaseTiles = [];
     this.worldTiles = [];
     this.dungeonTiles = [];
     this.pvpTiles = [];
-    for (let row = 0; row < 4; row++) {
-        for (let col = 0; col < 9; col++) {
-            const worldKey = row === 2 || col === 4 ? 'tile_path' : ((row + col) % 5 === 0 ? 'tile_flower' : 'tile_grass');
-            this.worldTiles.push(this.add.image(0, 0, worldKey).setAlpha(0.92).setDepth(1));
+    for (let row = 0; row < mapGridRows; row++) {
+        for (let col = 0; col < mapGridColumns; col++) {
+            const midRow = Math.floor(mapGridRows / 2);
+            const midCol = Math.floor(mapGridColumns / 2);
+            const isMainPath = row === midRow || col === midCol || (col % 5 === 1 && row > midRow);
+            const grassColors = [0x2f9f4b, 0x37b65a, 0x2d8f45, 0x47a861];
+            const dungeonColors = [0x20212d, 0x292b3a, 0x34313b, 0x3a2831];
+            const pvpColors = [0xb9853b, 0xc89a52, 0xa97938, 0xd0a45e];
+            const worldBase = isMainPath ? 0xcfa45a : grassColors[(row + col) % grassColors.length];
+            const dungeonBase = (row + col) % 9 === 0 ? 0x5f1d1d : dungeonColors[(row * 2 + col) % dungeonColors.length];
+            const pvpBase = pvpColors[(row + col * 2) % pvpColors.length];
+            const worldKey = isMainPath ? 'tile_path' : ((row + col) % 5 === 0 ? 'tile_flower' : 'tile_grass');
+
+            this.worldBaseTiles.push(this.add.rectangle(0, 0, 100, 100, worldBase, 1).setDepth(0.5));
+            this.dungeonBaseTiles.push(this.add.rectangle(0, 0, 100, 100, dungeonBase, 0).setDepth(0.5));
+            this.pvpBaseTiles.push(this.add.rectangle(0, 0, 100, 100, pvpBase, 0).setDepth(0.5));
+            this.worldTiles.push(this.add.image(0, 0, worldKey).setAlpha(0.66).setDepth(1));
             this.dungeonTiles.push(this.add.image(0, 0, (row + col) % 7 === 0 ? 'tile_lava' : 'tile_dungeon').setAlpha(0).setDepth(1));
             this.pvpTiles.push(this.add.image(0, 0, 'tile_colosseum').setAlpha(0).setDepth(1));
         }
@@ -802,9 +820,12 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.clouds.forEach((cloud) => cloud.setVisible(false));
     this.trees.forEach((tree) => tree.setVisible(false));
     this.mapTiles.forEach(({ tile }) => tile.setVisible(false));
-    this.worldTiles?.forEach((tile) => tile.setAlpha(isWorld ? 0.92 : 0));
-    this.dungeonTiles?.forEach((tile) => tile.setAlpha(!isWorld && !isPvp ? 0.9 : 0));
-    this.pvpTiles?.forEach((tile) => tile.setAlpha(isPvp ? 0.88 : 0));
+    this.worldBaseTiles?.forEach((tile) => tile.setAlpha(isWorld ? 1 : 0));
+    this.dungeonBaseTiles?.forEach((tile) => tile.setAlpha(!isWorld && !isPvp ? 1 : 0));
+    this.pvpBaseTiles?.forEach((tile) => tile.setAlpha(isPvp ? 1 : 0));
+    this.worldTiles?.forEach((tile) => tile.setAlpha(isWorld ? 0.66 : 0));
+    this.dungeonTiles?.forEach((tile) => tile.setAlpha(!isWorld && !isPvp ? 0.62 : 0));
+    this.pvpTiles?.forEach((tile) => tile.setAlpha(isPvp ? 0.58 : 0));
     this.sceneProps?.portal.setAlpha(isWorld ? 0.95 : 0);
     this.sceneProps?.chest.setAlpha(isWorld ? 0.95 : 0);
     this.sceneProps?.torchLeft.setAlpha(!isWorld && !isPvp ? 0.96 : 0);
@@ -832,6 +853,10 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     const width = gameSize.width || 800;
     const height = gameSize.height || 500;
     const groundY = height * 0.68;
+    const mapTop = Math.max(124, height * 0.22);
+    const mapHeight = Math.max(280, height - mapTop + 28);
+    const tileWidth = Math.ceil(width / mapGridColumns) + 2;
+    const tileHeight = Math.ceil(mapHeight / mapGridRows) + 2;
     const playerX = width * (this.currentMode === 'world' ? state.worldPlayerX : 0.38);
     const monsterX = width * 0.62;
     const actorY = this.currentMode === 'world'
@@ -841,29 +866,36 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     this.bg.setPosition(width / 2, height / 2).setSize(width, height);
     this.ground.setPosition(width / 2, groundY + 90).setSize(width, Math.max(230, height * 0.34));
     this.sun.setPosition(width * 0.18, height * 0.2);
-    const tileSize = Math.max(92, Math.min(150, width / 9));
+    const positionMapTile = (tile, index, isImage = false) => {
+        const row = Math.floor(index / mapGridColumns);
+        const col = index % mapGridColumns;
+        const x = (col * tileWidth) + (tileWidth / 2) - 1;
+        const y = mapTop + (row * tileHeight) + (tileHeight / 2) - 1;
+
+        tile.setPosition(x, y);
+        if (isImage) {
+            tile.setDisplaySize(tileWidth + 4, tileHeight + 4);
+        } else {
+            tile.setSize(tileWidth + 4, tileHeight + 4);
+        }
+    };
+    this.worldBaseTiles?.forEach((tile, index) => positionMapTile(tile, index));
+    this.dungeonBaseTiles?.forEach((tile, index) => positionMapTile(tile, index));
+    this.pvpBaseTiles?.forEach((tile, index) => positionMapTile(tile, index));
     this.worldTiles?.forEach((tile, index) => {
-        const row = Math.floor(index / 9);
-        const col = index % 9;
-        tile.setPosition((col + 0.5) * (width / 9), groundY - 178 + row * (tileSize * 0.76))
-            .setDisplaySize(tileSize, tileSize);
+        positionMapTile(tile, index, true);
     });
     this.dungeonTiles?.forEach((tile, index) => {
-        const row = Math.floor(index / 9);
-        const col = index % 9;
-        tile.setPosition((col + 0.5) * (width / 9), groundY - 172 + row * (tileSize * 0.76))
-            .setDisplaySize(tileSize, tileSize);
+        positionMapTile(tile, index, true);
     });
     this.pvpTiles?.forEach((tile, index) => {
-        const row = Math.floor(index / 9);
-        const col = index % 9;
-        tile.setPosition((col + 0.5) * (width / 9), groundY - 178 + row * (tileSize * 0.76))
-            .setDisplaySize(tileSize, tileSize);
+        positionMapTile(tile, index, true);
     });
-    this.sceneProps?.portal.setPosition(width * 0.77, groundY - 92).setDisplaySize(tileSize * 0.95, tileSize * 0.95);
-    this.sceneProps?.chest.setPosition(width * 0.2, groundY - 48).setDisplaySize(tileSize * 0.72, tileSize * 0.72);
-    this.sceneProps?.torchLeft.setPosition(width * 0.24, groundY - 114).setDisplaySize(tileSize * 0.68, tileSize * 0.68);
-    this.sceneProps?.torchRight.setPosition(width * 0.76, groundY - 114).setDisplaySize(tileSize * 0.68, tileSize * 0.68);
+    const propSize = Math.max(76, Math.min(124, tileWidth * 1.2));
+    this.sceneProps?.portal.setPosition(width * 0.77, groundY - 92).setDisplaySize(propSize, propSize);
+    this.sceneProps?.chest.setPosition(width * 0.2, groundY - 48).setDisplaySize(propSize * 0.76, propSize * 0.76);
+    this.sceneProps?.torchLeft.setPosition(width * 0.24, groundY - 114).setDisplaySize(propSize * 0.72, propSize * 0.72);
+    this.sceneProps?.torchRight.setPosition(width * 0.76, groundY - 114).setDisplaySize(propSize * 0.72, propSize * 0.72);
     this.mountainBack.setPosition(width * 0.35, groundY - 150).setScale(Math.max(1.2, width / 900), 1.2);
     this.mountainFront.setPosition(width * 0.63, groundY - 135).setScale(Math.max(1.15, width / 950), 1.15);
     this.clouds[0].setPosition(width * 0.28, height * 0.2);

@@ -293,6 +293,9 @@ h2 {
     border: 1px solid #68c7ff;
     font-size: 24px;
     font-weight: 700;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 
 .name-row {

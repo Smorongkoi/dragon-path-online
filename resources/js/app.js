@@ -114,6 +114,32 @@ const elementMeta = {
     neutral: { label: 'ไร้ธาตุ', fullLabel: 'ไร้ธาตุ', color: '#94a3b8' },
 };
 
+const assetBasePath = '/assets/generated/pixel-art';
+const playerClassRows = {
+    normal: 0,
+    cavalry: 1,
+    dragon_knight: 1,
+    eagle_warrior: 1,
+    wolf_orc: 1,
+    mage: 2,
+    fire_mage: 2,
+    ice_mage: 2,
+    storm_mage: 2,
+    archer: 3,
+    forest_hunter: 3,
+    falcon_archer: 3,
+    shadow_marksman: 3,
+};
+const monsterFamilyRows = {
+    slime: 0,
+    bat: 1,
+    wolf: 2,
+    skeleton: 3,
+    golem: 4,
+    wyvern: 5,
+    default: 0,
+};
+
 const audio = {
     ctx: null,
     sfxEnabled: localStorage.getItem('dragon-path-sfx') !== 'off' && localStorage.getItem('dragon-path-audio') !== 'off',
@@ -417,7 +443,61 @@ class BattleScene extends Phaser.Scene {
     }
 }
 
+BattleScene.prototype.preload = function preloadPixelArtAssets() {
+    this.load.image('playerSheet', `${assetBasePath}/player-classes-sheet.png`);
+    this.load.image('monsterSheet', `${assetBasePath}/monster-evolution-sheet.png`);
+    this.load.image('tileSheet', `${assetBasePath}/world-dungeon-tileset.png`);
+    this.load.image('uiSheet', `${assetBasePath}/fantasy-ui-pack.png`);
+};
+
+BattleScene.prototype.createCroppedTexture = function createCroppedTexture(key, sheetKey, x, y, width, height) {
+    if (this.textures.exists(key) || !this.textures.exists(sheetKey)) {
+        return;
+    }
+
+    const source = this.textures.get(sheetKey).getSourceImage();
+    const texture = this.textures.createCanvas(key, Math.ceil(width), Math.ceil(height));
+    const context = texture.getContext();
+    context.clearRect(0, 0, width, height);
+    context.drawImage(source, x, y, width, height, 0, 0, width, height);
+    texture.refresh();
+};
+
+BattleScene.prototype.createTileTextures = function createTileTextures() {
+    if (!this.textures.exists('tileSheet')) return;
+
+    const cell = 128;
+    const tiles = {
+        tile_grass: [0, 0],
+        tile_flower: [4, 0],
+        tile_path: [5, 0],
+        tile_bush: [0, 1],
+        tile_tree: [8, 1],
+        tile_water: [4, 2],
+        tile_dungeon: [0, 3],
+        tile_lava: [6, 4],
+        tile_colosseum: [4, 5],
+        prop_chest: [0, 7],
+        prop_portal: [7, 7],
+        prop_torch: [8, 7],
+    };
+
+    Object.entries(tiles).forEach(([key, [col, row]]) => {
+        this.createCroppedTexture(key, 'tileSheet', col * cell, row * cell, cell, cell);
+    });
+};
+
 BattleScene.prototype.createPlayerTexture = function createPlayerTexture() {
+    if (this.textures.exists('playerSheet')) {
+        for (let row = 0; row < 4; row++) {
+            for (let frame = 0; frame < 4; frame++) {
+                this.createCroppedTexture(`player_class_${row}_${frame}`, 'playerSheet', frame * 384, row * 256, 384, 256);
+            }
+        }
+        this.createCroppedTexture('playerTex', 'playerSheet', 0, 0, 384, 256);
+        return;
+    }
+
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     g.fillStyle(0x1d4ed8, 1);
     g.fillRoundedRect(22, 34, 44, 48, 10);
@@ -446,6 +526,18 @@ BattleScene.prototype.createPlayerTexture = function createPlayerTexture() {
 };
 
 BattleScene.prototype.createMonsterTexture = function createMonsterTexture(key, fill, accent, type = 'slime') {
+    if (this.textures.exists('monsterSheet')) {
+        const row = monsterFamilyRows[type] ?? monsterFamilyRows.default;
+        const frameWidth = 384;
+        const frameHeight = 1024 / 6;
+
+        for (let stage = 0; stage < 4; stage++) {
+            this.createCroppedTexture(`monster_${type}_${stage}`, 'monsterSheet', stage * frameWidth, row * frameHeight, frameWidth, frameHeight);
+        }
+        this.createCroppedTexture(key, 'monsterSheet', 0, row * frameHeight, frameWidth, frameHeight);
+        return;
+    }
+
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     g.fillStyle(fill, 1);
     if (type === 'bat') {
@@ -490,8 +582,26 @@ BattleScene.prototype.createMonsterTexture = function createMonsterTexture(key, 
 };
 
 BattleScene.prototype.createSceneLayers = function createSceneLayers() {
+    this.createTileTextures();
     this.bg = this.add.rectangle(400, 250, 800, 500, 0x7dd3fc);
     this.sun = this.add.circle(170, 130, 58, 0xffd166, 0.72);
+    this.worldTiles = [];
+    this.dungeonTiles = [];
+    this.pvpTiles = [];
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 9; col++) {
+            const worldKey = row === 2 || col === 4 ? 'tile_path' : ((row + col) % 5 === 0 ? 'tile_flower' : 'tile_grass');
+            this.worldTiles.push(this.add.image(0, 0, worldKey).setAlpha(0.92).setDepth(1));
+            this.dungeonTiles.push(this.add.image(0, 0, (row + col) % 7 === 0 ? 'tile_lava' : 'tile_dungeon').setAlpha(0).setDepth(1));
+            this.pvpTiles.push(this.add.image(0, 0, 'tile_colosseum').setAlpha(0).setDepth(1));
+        }
+    }
+    this.sceneProps = {
+        portal: this.add.image(0, 0, 'prop_portal').setScale(1.08).setDepth(4),
+        chest: this.add.image(0, 0, 'prop_chest').setScale(0.9).setDepth(4),
+        torchLeft: this.add.image(0, 0, 'prop_torch').setScale(0.8).setDepth(4).setAlpha(0),
+        torchRight: this.add.image(0, 0, 'prop_torch').setScale(0.8).setDepth(4).setAlpha(0),
+    };
     this.mountainBack = this.add.triangle(320, 278, 0, 150, 210, 20, 420, 150, 0x5b8fb9, 0.78);
     this.mountainFront = this.add.triangle(540, 288, 0, 160, 240, 16, 480, 160, 0x3f6f8f, 0.88);
     this.clouds = [
@@ -558,8 +668,8 @@ BattleScene.prototype.create = function createGameScene() {
     this.createSceneLayers();
     this.playerShadow = this.add.ellipse(230, 374, 128, 26, 0x000000, 0.22);
     this.monsterShadow = this.add.ellipse(570, 374, 142, 28, 0x000000, 0.26);
-    this.player = this.add.sprite(230, 310, 'playerTex').setScale(2.1);
-    this.monster = this.add.sprite(570, 300, 'monster_default').setScale(2.25);
+    this.player = this.add.sprite(230, 310, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.76 : 2.1);
+    this.monster = this.add.sprite(570, 300, 'monster_default').setScale(this.textures.exists('monsterSheet') ? 0.82 : 2.25);
     this.playerNameTag = this.add.text(230, 190, 'You', {
         fontFamily: gameFontFamily,
         fontSize: '16px',
@@ -601,6 +711,13 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.clouds.forEach((cloud) => cloud.setVisible(isWorld));
     this.trees.forEach((tree) => tree.setVisible(isWorld));
     this.mapTiles.forEach(({ tile }) => tile.setVisible(isWorld));
+    this.worldTiles?.forEach((tile) => tile.setAlpha(isWorld ? 0.92 : 0));
+    this.dungeonTiles?.forEach((tile) => tile.setAlpha(!isWorld && !isPvp ? 0.9 : 0));
+    this.pvpTiles?.forEach((tile) => tile.setAlpha(isPvp ? 0.88 : 0));
+    this.sceneProps?.portal.setAlpha(isWorld ? 0.95 : 0);
+    this.sceneProps?.chest.setAlpha(isWorld ? 0.95 : 0);
+    this.sceneProps?.torchLeft.setAlpha(!isWorld && !isPvp ? 0.96 : 0);
+    this.sceneProps?.torchRight.setAlpha(!isWorld && !isPvp ? 0.96 : 0);
     this.dungeonGlow.setAlpha(isWorld || isPvp ? 0 : 0.48);
     this.torches.forEach((torch) => torch.setAlpha(!isWorld && !isPvp ? 0.75 : 0));
     this.colosseum.skyGlow.setAlpha(isPvp ? 0.42 : 0);
@@ -633,6 +750,29 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     this.bg.setPosition(width / 2, height / 2).setSize(width, height);
     this.ground.setPosition(width / 2, groundY + 90).setSize(width, Math.max(230, height * 0.34));
     this.sun.setPosition(width * 0.18, height * 0.2);
+    const tileSize = Math.max(92, Math.min(150, width / 9));
+    this.worldTiles?.forEach((tile, index) => {
+        const row = Math.floor(index / 9);
+        const col = index % 9;
+        tile.setPosition((col + 0.5) * (width / 9), groundY - 178 + row * (tileSize * 0.76))
+            .setDisplaySize(tileSize, tileSize);
+    });
+    this.dungeonTiles?.forEach((tile, index) => {
+        const row = Math.floor(index / 9);
+        const col = index % 9;
+        tile.setPosition((col + 0.5) * (width / 9), groundY - 172 + row * (tileSize * 0.76))
+            .setDisplaySize(tileSize, tileSize);
+    });
+    this.pvpTiles?.forEach((tile, index) => {
+        const row = Math.floor(index / 9);
+        const col = index % 9;
+        tile.setPosition((col + 0.5) * (width / 9), groundY - 178 + row * (tileSize * 0.76))
+            .setDisplaySize(tileSize, tileSize);
+    });
+    this.sceneProps?.portal.setPosition(width * 0.77, groundY - 92).setDisplaySize(tileSize * 0.95, tileSize * 0.95);
+    this.sceneProps?.chest.setPosition(width * 0.2, groundY - 48).setDisplaySize(tileSize * 0.72, tileSize * 0.72);
+    this.sceneProps?.torchLeft.setPosition(width * 0.24, groundY - 114).setDisplaySize(tileSize * 0.68, tileSize * 0.68);
+    this.sceneProps?.torchRight.setPosition(width * 0.76, groundY - 114).setDisplaySize(tileSize * 0.68, tileSize * 0.68);
     this.mountainBack.setPosition(width * 0.35, groundY - 150).setScale(Math.max(1.2, width / 900), 1.2);
     this.mountainFront.setPosition(width * 0.63, groundY - 135).setScale(Math.max(1.15, width / 950), 1.15);
     this.clouds[0].setPosition(width * 0.28, height * 0.2);
@@ -676,6 +816,61 @@ BattleScene.prototype.setPlayerName = function setPlayerName(name) {
     this.playerNameTag?.setText(name || 'Adventurer');
 };
 
+BattleScene.prototype.setPlayerClass = function setPlayerClass(classId = 'normal') {
+    if (!this.player) return;
+
+    const row = playerClassRows[classId] ?? 0;
+    const textureKey = `player_class_${row}_0`;
+    if (this.textures.exists(textureKey)) {
+        this.player.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76);
+    }
+};
+
+BattleScene.prototype.setMonster = function setPixelMonster(monster) {
+    if (!monster || !this.monsterName) return;
+
+    const family = monster.sprite_key || monster.family_key || 'default';
+    const stage = Math.max(0, Math.min(3, Number(monster.evolution_stage ?? Math.floor((monster.level || 1) / 10))));
+    const textureKey = `monster_${family}_${stage}`;
+    const fallbackKey = `monster_${family}`;
+    const element = elementMeta[monster.element || 'neutral'] || elementMeta.neutral;
+
+    if (this.textures.exists(textureKey)) {
+        this.monster.setTexture(textureKey);
+    } else if (this.textures.exists(fallbackKey)) {
+        this.monster.setTexture(fallbackKey);
+    } else {
+        this.monster.setTexture('monster_default');
+    }
+
+    this.monster.clearTint();
+    this.monster.setAlpha(1).setAngle(0).setScale(this.textures.exists('monsterSheet') ? (monster.is_boss ? 1.05 : 0.88) : 2.4);
+    this.monsterName.setText(`${element.fullLabel} ${monster.name} LV ${monster.level}`);
+    this.monsterName.setColor(element.color);
+    this.resizeScene({ width: this.scale.width, height: this.scale.height });
+};
+
+BattleScene.prototype.setOpponent = function setOpponent(opponent) {
+    if (!opponent || !this.monsterName) return;
+
+    const row = playerClassRows[opponent.class_id || 'normal'] ?? 0;
+    const textureKey = `player_class_${row}_0`;
+    const element = elementMeta[opponent.element || 'neutral'] || elementMeta.neutral;
+
+    if (this.textures.exists(textureKey)) {
+        this.monster.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76);
+    }
+
+    this.monster.clearTint();
+    if (opponent.bot) {
+        this.monster.setTint(0xfbbf24);
+    }
+    this.monster.setAlpha(1).setAngle(0);
+    this.monsterName.setText(`${element.fullLabel} ${opponent.name} LV ${opponent.level}`);
+    this.monsterName.setColor(element.color);
+    this.resizeScene({ width: this.scale.width, height: this.scale.height });
+};
+
 BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(dx, dy = 0) {
     if (this.currentMode !== 'world') return;
 
@@ -710,7 +905,7 @@ BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = [])
     players.forEach((player) => {
         const id = String(player.id);
         if (!this.onlineActors.has(id)) {
-            const sprite = this.add.sprite(0, 0, 'playerTex').setScale(1.55).setDepth(12);
+            const sprite = this.add.sprite(0, 0, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.52 : 1.55).setDepth(12);
             const shadow = this.add.ellipse(0, 0, 88, 20, 0x000000, 0.18).setDepth(10);
             const nameTag = this.add.text(0, 0, player.name, {
                 fontFamily: gameFontFamily,
@@ -721,17 +916,27 @@ BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = [])
                 strokeThickness: 4,
             }).setOrigin(0.5).setDepth(20);
 
+            this.applyOnlinePlayerTexture(sprite, player);
             sprite.setTint(this.onlinePlayerTint(player));
             this.onlineActors.set(id, { player, sprite, shadow, nameTag });
         } else {
             const actor = this.onlineActors.get(id);
             actor.player = player;
             actor.nameTag.setText(player.name);
+            this.applyOnlinePlayerTexture(actor.sprite, player);
             actor.sprite.setTint(this.onlinePlayerTint(player));
         }
     });
 
     this.positionOnlineActors(this.scale.width, this.scale.height * 0.68 - 72);
+};
+
+BattleScene.prototype.applyOnlinePlayerTexture = function applyOnlinePlayerTexture(sprite, player) {
+    const row = playerClassRows[player?.class_id || 'normal'] ?? 0;
+    const textureKey = `player_class_${row}_0`;
+    if (this.textures.exists(textureKey)) {
+        sprite.setTexture(textureKey).setScale(row === 1 ? 0.48 : 0.52);
+    }
 };
 
 BattleScene.prototype.onlinePlayerTint = function onlinePlayerTint(player) {
@@ -838,7 +1043,11 @@ function render() {
     const livingMonsters = monsters.filter((monster) => monster.current_hp > 0);
     els.fightButton.disabled = livingMonsters.length === 0 || state.encounterResolved;
     els.playerName.value = player.name;
-    els.classBadge.textContent = (currentClass?.name || 'คน').slice(0, 2);
+    els.classBadge.textContent = '';
+    els.classBadge.title = currentClass?.name || player.class_id;
+    els.classBadge.style.backgroundImage = `url("${assetBasePath}/player-classes-sheet.png")`;
+    els.classBadge.style.backgroundSize = '400% 400%';
+    els.classBadge.style.backgroundPosition = `0% ${(playerClassRows[player.class_id || 'normal'] ?? 0) * 33.333}%`;
     els.className.textContent = `Class: ${currentClass?.name || player.class_id}`;
     renderElementChoices(player.element || 'earth');
     els.levelText.textContent = `LV ${player.level}`;
@@ -866,6 +1075,7 @@ function render() {
     renderWorldPanels(state.payload.world || {});
     renderPvpPanel(state.payload.pvp, skills);
     state.scene?.setPlayerName(player.name);
+    state.scene?.setPlayerClass(player.class_id || 'normal');
     state.scene?.setOnlinePlayers(state.payload.world?.onlinePlayers || []);
 
     els.classChoices.innerHTML = '';
@@ -884,7 +1094,11 @@ function render() {
         });
     }
 
-    state.scene?.setMonster(monsters.find((monster) => monster.id === state.selectedMonsterId) || monsters[0]);
+    if (state.mode === 'pvp' && state.payload.pvp?.opponent) {
+        state.scene?.setOpponent(state.payload.pvp.opponent);
+    } else {
+        state.scene?.setMonster(monsters.find((monster) => monster.id === state.selectedMonsterId) || monsters[0]);
+    }
     renderClassEvolution(player, availableEvolutions, classEvolutionTree);
     els.modeRoot.dataset.mode = state.mode;
     state.scene?.setMode(state.mode);

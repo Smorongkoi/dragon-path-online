@@ -366,15 +366,7 @@ class BattleScene extends Phaser.Scene {
             strokeThickness: 5,
         }).setOrigin(0.5);
 
-        this.tweens.add({
-            targets: this.monster,
-            alpha: 0,
-            angle: 18,
-            y: this.monster.y + 40,
-            scale: 1.6,
-            duration: 620,
-            ease: 'Cubic.easeIn',
-        });
+        this.playDeathPose('monster');
 
         this.tweens.add({
             targets: deathText,
@@ -386,20 +378,18 @@ class BattleScene extends Phaser.Scene {
     }
 
     playHit(actor, amount = null, effect = null) {
-        const target = actor === 'player' ? this.monster : this.player;
-        this.tweens.add({
-            targets: target,
-            x: target.x + (actor === 'player' ? 18 : -18),
-            duration: 80,
-            yoyo: true,
-            repeat: 2,
-        });
+        const attackerRole = actor === 'player' ? 'player' : 'monster';
+        const targetRole = actor === 'player' ? 'monster' : 'player';
+        const attacker = this.actorSprite(attackerRole);
+        const target = this.actorSprite(targetRole);
+        this.playJumpAttack(attackerRole);
+        window.setTimeout(() => this.playHurtPose(targetRole), 120);
 
         if (amount !== null) {
             const isPlayerHit = actor === 'player';
             const color = this.effectColor(effect, isPlayerHit);
-            const x = actor === 'player' ? this.monster.x : this.player.x;
-            const y = actor === 'player' ? this.monster.y - 86 : this.player.y - 86;
+            const x = target?.x || (actor === 'player' ? this.monster.x : this.player.x);
+            const y = (target?.y || (actor === 'player' ? this.monster.y : this.player.y)) - 86;
             const effectText = this.effectText(effect);
             const floating = this.add.text(x, y, `${amount > 0 ? `-${amount}` : 'MISS'}${effectText}`, {
                 fontFamily: gameFontFamily,
@@ -416,6 +406,131 @@ class BattleScene extends Phaser.Scene {
                 alpha: 0,
                 duration: 700,
                 onComplete: () => floating.destroy(),
+            });
+        }
+
+        if (attacker) {
+            attacker.setDepth(24);
+        }
+    }
+
+    actorSprite(role) {
+        return role === 'player' ? this.player : this.monster;
+    }
+
+    actorShadow(role) {
+        return role === 'player' ? this.playerShadow : this.monsterShadow;
+    }
+
+    playStandPose(role, flipX = null) {
+        const sprite = this.actorSprite(role);
+        const shadow = this.actorShadow(role);
+        if (!sprite) return;
+
+        const scale = Math.max(Math.abs(sprite.scaleX), Math.abs(sprite.scaleY));
+        sprite.clearTint();
+        sprite.setAlpha(1).setAngle(0).setScale(scale);
+        if (flipX !== null) {
+            sprite.setFlipX(flipX);
+        }
+        if (shadow) {
+            shadow.setAlpha(role === 'player' ? 0.22 : 0.26).setScale(1);
+        }
+    }
+
+    playWalkPose(role, dx = 1) {
+        const sprite = this.actorSprite(role);
+        const shadow = this.actorShadow(role);
+        if (!sprite) return;
+
+        sprite.setFlipX(dx < 0);
+        this.tweens.add({
+            targets: sprite,
+            y: sprite.y - 10,
+            angle: dx < 0 ? -5 : 5,
+            duration: 120,
+            yoyo: true,
+            repeat: 1,
+            ease: 'Sine.easeInOut',
+            onComplete: () => sprite.setAngle(0),
+        });
+        if (shadow) {
+            this.tweens.add({
+                targets: shadow,
+                scaleX: 0.88,
+                alpha: 0.12,
+                duration: 120,
+                yoyo: true,
+                repeat: 1,
+            });
+        }
+    }
+
+    playJumpAttack(role) {
+        const sprite = this.actorSprite(role);
+        if (!sprite) return;
+
+        const startX = sprite.x;
+        const startY = sprite.y;
+        const direction = role === 'player' ? 1 : -1;
+        sprite.setDepth(28);
+        this.tweens.add({
+            targets: sprite,
+            x: startX + (direction * 82),
+            y: startY - 42,
+            angle: direction * 8,
+            duration: 150,
+            ease: 'Cubic.easeOut',
+            yoyo: true,
+            onComplete: () => {
+                sprite.setPosition(startX, startY).setAngle(0).setDepth(22);
+            },
+        });
+    }
+
+    playHurtPose(role) {
+        const sprite = this.actorSprite(role);
+        if (!sprite || !sprite.visible) return;
+
+        const startX = sprite.x;
+        const startY = sprite.y;
+        const direction = role === 'player' ? -1 : 1;
+        sprite.setTint(0xff6b6b);
+        this.tweens.add({
+            targets: sprite,
+            x: startX + (direction * 18),
+            y: startY + 4,
+            alpha: 0.62,
+            duration: 70,
+            yoyo: true,
+            repeat: 2,
+            onComplete: () => {
+                sprite.setPosition(startX, startY).setAlpha(1).clearTint();
+            },
+        });
+    }
+
+    playDeathPose(role) {
+        const sprite = this.actorSprite(role);
+        const shadow = this.actorShadow(role);
+        if (!sprite) return;
+
+        sprite.clearTint();
+        this.tweens.add({
+            targets: sprite,
+            angle: role === 'player' ? -86 : 86,
+            y: sprite.y + 54,
+            alpha: 0.52,
+            scaleY: sprite.scaleY * 0.74,
+            duration: 520,
+            ease: 'Cubic.easeIn',
+        });
+        if (shadow) {
+            this.tweens.add({
+                targets: shadow,
+                alpha: 0.08,
+                scaleX: 1.25,
+                duration: 520,
             });
         }
     }
@@ -811,6 +926,7 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.currentMode = mode;
     const isWorld = mode === 'world';
     const isPvp = mode === 'pvp';
+    this.playStandPose('player', isWorld ? null : false);
     this.bg.setFillStyle(isWorld ? 0x7dd3fc : (isPvp ? 0x26435f : 0x101827));
     this.ground.setFillStyle(isWorld ? 0x2f8f46 : (isPvp ? 0xb9853b : 0x20212d)).setAlpha(isWorld ? 0.98 : 0.96);
     this.sun.setFillStyle(isWorld ? 0xffd166 : (isPvp ? 0xffc66d : 0x6d597a), isWorld || isPvp ? 0.72 : 0.28);
@@ -969,6 +1085,7 @@ BattleScene.prototype.setMonster = function setPixelMonster(monster) {
     this.monster.clearTint();
     this.monster.setFlipX(false);
     this.monster.setAlpha(1).setAngle(0).setScale(this.textures.exists('monsterSheet') ? (monster.is_boss ? 1.05 : 0.88) : 2.4);
+    this.playStandPose('monster', false);
     this.monsterName.setText(`${element.fullLabel} ${monster.name} LV ${monster.level}`);
     this.monsterName.setColor(element.color);
     this.resizeScene({ width: this.scale.width, height: this.scale.height });
@@ -987,6 +1104,7 @@ BattleScene.prototype.setOpponent = function setOpponent(opponent) {
 
     this.monster.clearTint();
     this.monster.setFlipX(true);
+    this.playStandPose('monster', true);
     if (opponent.bot) {
         this.monster.setTint(0xfbbf24);
     }
@@ -1004,14 +1122,7 @@ BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(dx, dy = 0) {
     localStorage.setItem('dragon-path-world-x', String(state.worldPlayerX));
     localStorage.setItem('dragon-path-world-y', String(state.worldPlayerY));
     this.resizeScene({ width: this.scale.width, height: this.scale.height });
-    this.tweens.add({
-        targets: [this.player, this.playerShadow, this.playerNameTag],
-        scaleX: '+=0.04',
-        scaleY: '+=0.04',
-        duration: 120,
-        yoyo: true,
-        ease: 'Sine.easeOut',
-    });
+    this.playWalkPose('player', dx || 1);
 };
 
 BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = []) {
@@ -1812,6 +1923,10 @@ function showPvpBattle(battle) {
 
     battle.turns.forEach((turn, index) => {
         window.setTimeout(() => {
+            if (!turn.actor) {
+                log(turn.text);
+                return;
+            }
             const actor = turn.actor === 'player' ? 'player' : 'monster';
             state.scene?.playHit(actor, turn.damage, turn.effect);
             playSfx(turn.effect === 'x2' || turn.effect === 'critical' ? 'crit' : 'hit');
@@ -1822,6 +1937,9 @@ function showPvpBattle(battle) {
     if (battle.won || battle.lost) {
         log(`${battle.isBot ? 'บอท PVP' : 'PVP'}: ${battle.won ? 'ชนะ' : 'แพ้'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
         playSfx(battle.won ? 'victory' : 'hit');
+        window.setTimeout(() => {
+            state.scene?.playDeathPose(battle.won ? 'monster' : 'player');
+        }, Math.max(520, battle.turns.length * 180));
         window.setTimeout(async () => {
             await refreshWorld();
             if (battle.isBot && battle.lost) {
@@ -2019,6 +2137,10 @@ function showBattle(battle) {
     }
     battle.turns.slice(-4).forEach((turn, index) => {
         window.setTimeout(() => {
+            if (!turn.actor) {
+                log(turn.text);
+                return;
+            }
             state.scene?.playHit(turn.actor, turn.damage, turn.effect);
             playSfx(turn.effect === 'x2' || turn.effect === 'critical' ? 'crit' : 'hit');
             log(turn.text);
@@ -2030,6 +2152,11 @@ function showBattle(battle) {
             const defeated = battle.turns.filter((turn) => turn.type === 'monster_defeated').at(-1);
             state.scene?.playMonsterDeath(defeated?.monster?.name || battle.monster.name);
         }, 820);
+    }
+    if (battle.playerDefeated) {
+        window.setTimeout(() => {
+            state.scene?.playDeathPose('player');
+        }, Math.max(520, battle.turns.length * 180));
     }
 
     if (!battle.won && !battle.playerDefeated) {

@@ -8,6 +8,24 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
+    @guest
+        <section class="login-gate">
+            <div class="login-card">
+                <p class="eyebrow">Google Account Required</p>
+                <h1>Dragon Path Online</h1>
+                <p>ต้องเข้าสู่ระบบด้วย Gmail ก่อนเข้าเล่น เพื่อผูกตัวละครและเซฟข้อมูลผู้เล่นไว้กับบัญชี Google</p>
+                @if (session('auth_error'))
+                    <div class="auth-error">{{ session('auth_error') }}</div>
+                @endif
+                @if ($googleReady)
+                    <a class="google-login-button" href="{{ route('auth.google') }}">เข้าสู่ระบบด้วย Google</a>
+                @else
+                    <button class="google-login-button" type="button" disabled>รอตั้งค่า Google OAuth</button>
+                    <small>ตั้งค่า GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI ใน Railway ก่อนเปิดให้ login จริง</small>
+                @endif
+            </div>
+        </section>
+    @endguest
     <main class="game-shell">
         <section class="topbar">
             <div>
@@ -19,6 +37,13 @@
                 <button id="toggle-menu-button" type="button">คำสั่ง</button>
                 <button id="sound-toggle-button" type="button">เอฟเฟกต์: เปิด</button>
                 <button id="bgm-toggle-button" type="button">เพลง: เปิด</button>
+                @auth
+                    <div class="save-pill account-pill">{{ auth()->user()->name }}</div>
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit">ออก</button>
+                    </form>
+                @endauth
                 <div class="save-pill" id="total-players-text">ผู้เล่นทั้งหมด 0</div>
                 <div class="save-pill" id="online-players-text">ออนไลน์ 0</div>
                 <div class="save-pill" id="save-status">Loading</div>
@@ -28,6 +53,7 @@
         <section class="mode-switch">
             <button id="monster-mode-button" class="selected" type="button">ตีมอนสเตอร์ เก็บเลเวล</button>
             <button id="arena-mode-button" type="button">เข้าลานประลอง</button>
+            <button id="bot-pvp-button" type="button">สู้กับบอท</button>
         </section>
 
         <section class="hud left-drawer">
@@ -142,7 +168,6 @@
                 <button id="fight-button" class="primary-action battle-panel" type="button" disabled onclick="window.fightAction?.()">โจมตี</button>
                 <div class="panel-block pvp-panel">
                     <h2>ลานประลอง</h2>
-                    <button id="bot-pvp-button" class="secondary-action" type="button">สู้กับบอท</button>
                     <div id="arena-player-list" class="button-list"></div>
                     <div class="stat-card">
                         <div class="stat-card-head">

@@ -749,9 +749,9 @@ async function request(url, options = {}) {
         },
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        els.saveStatus.textContent = 'Error';
+        els.saveStatus.textContent = response.status === 401 ? 'Login required' : 'Error';
         throw new Error(data.message || 'Request failed');
     }
 
@@ -1186,7 +1186,8 @@ function setMode(mode) {
     state.mode = mode;
     els.modeRoot.dataset.mode = mode;
     els.monsterModeButton?.classList.toggle('selected', mode !== 'pvp');
-    els.arenaModeButton?.classList.toggle('selected', mode === 'pvp');
+    els.arenaModeButton?.classList.toggle('selected', mode === 'pvp' && !state.payload?.pvp?.is_bot);
+    els.botPvpButton?.classList.toggle('selected', mode === 'pvp' && Boolean(state.payload?.pvp?.is_bot));
     state.scene?.setMode(mode);
     if (state.payload) {
         render();

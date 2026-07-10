@@ -16,7 +16,11 @@ class GameController extends Controller
 {
     public function index(): View
     {
-        return view('game');
+        return view('game', [
+            'googleReady' => filled(config('services.google.client_id'))
+                && filled(config('services.google.client_secret'))
+                && filled(config('services.google.redirect')),
+        ]);
     }
 
     public function bootstrap(Request $request): JsonResponse
@@ -26,15 +30,50 @@ class GameController extends Controller
             'name' => ['nullable', 'string', 'max:60'],
         ]);
 
-        $player = Player::firstOrCreate(
-            ['browser_token' => $data['browserToken']],
-            [
-                'name' => $data['name'] ?? 'Adventurer',
-                'element' => 'earth',
-                'inventory' => [],
-                'class_history' => ['normal'],
-            ]
-        );
+        $user = $request->user();
+        if (! $user && ! app()->environment('testing')) {
+            return response()->json([
+                'message' => 'ต้องเข้าสู่ระบบด้วย Google ก่อนเข้าเล่น',
+                'loginUrl' => route('auth.google'),
+            ], 401);
+        }
+
+        if ($user) {
+            $player = Player::where('user_id', $user->id)->first();
+
+            if (! $player) {
+                $player = Player::where('browser_token', $data['browserToken'])
+                    ->whereNull('user_id')
+                    ->first();
+            }
+
+            if ($player) {
+                $player->forceFill([
+                    'user_id' => $user->id,
+                    'browser_token' => $data['browserToken'],
+                    'name' => $player->name ?: $user->name,
+                ])->save();
+            } else {
+                $player = Player::create([
+                    'user_id' => $user->id,
+                    'browser_token' => $data['browserToken'],
+                    'name' => $data['name'] ?? $user->name,
+                    'element' => 'earth',
+                    'inventory' => [],
+                    'class_history' => ['normal'],
+                ]);
+            }
+        } else {
+            $player = Player::firstOrCreate(
+                ['browser_token' => $data['browserToken']],
+                [
+                    'name' => $data['name'] ?? 'Adventurer',
+                    'element' => 'earth',
+                    'inventory' => [],
+                    'class_history' => ['normal'],
+                ]
+            );
+        }
 
         $player->forceFill(['last_seen_at' => now()])->save();
 

@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\GameController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok']))->name('health');
+Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('auth.google');
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
+Route::post('/logout', [GoogleAuthController::class, 'logout'])->name('logout');
 Route::get('/', [GameController::class, 'index'])->name('game.index');
 Route::post('/game/bootstrap', [GameController::class, 'bootstrap'])->name('game.bootstrap');
 Route::get('/game/world', [GameController::class, 'world'])->name('game.world');

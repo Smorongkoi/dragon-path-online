@@ -660,4 +660,53 @@ class GameFlowTest extends TestCase
             ->assertJsonPath('player.hp', 218)
             ->assertJsonPath('player.mp', 111);
     }
+
+    public function test_auto_monster_farm_uses_bonus_hp_and_keeps_exp_gain(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $player = Player::create([
+            'browser_token' => 'auto-monster-token',
+            'name' => 'Auto Monster',
+            'level' => 10,
+            'class_id' => 'cavalry',
+            'exp' => 0,
+            'hp' => 1,
+            'max_hp' => 243,
+            'mp' => 30,
+            'max_mp' => 66,
+            'atk' => 500,
+            'def' => 80,
+            'inventory' => [],
+            'class_history' => ['normal', 'cavalry'],
+        ]);
+
+        $this->postJson("/game/player/{$player->id}/recover", [
+            'auto_farm' => true,
+        ])->assertOk()
+            ->assertJsonPath('player.hp', 24300)
+            ->assertJsonPath('player.max_hp', 243);
+
+        $this->postJson("/game/player/{$player->id}/roll-encounter", [
+            'level_dice' => 1,
+            'count_dice' => 1,
+        ])->assertOk();
+
+        $fight = null;
+        for ($i = 0; $i < 6; $i++) {
+            $fight = $this->postJson("/game/player/{$player->id}/fight", [
+                'skill_id' => 'punch',
+                'dice' => 6,
+                'monster_dice' => 1,
+                'auto_farm' => true,
+            ])->assertOk();
+
+            if ($fight->json('battle.won')) {
+                break;
+            }
+        }
+
+        $fight->assertJsonPath('battle.won', true);
+        $this->assertGreaterThan(0, Player::find($player->id)->exp);
+    }
 }

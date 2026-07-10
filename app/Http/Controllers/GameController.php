@@ -164,6 +164,7 @@ class GameController extends Controller
             'target_monster_id' => ['nullable', 'string'],
             'dice' => ['nullable', 'integer', 'between:1,6'],
             'monster_dice' => ['nullable', 'integer', 'between:1,6'],
+            'auto_farm' => ['nullable', 'boolean'],
         ]);
 
         $encounter = $request->session()->get($this->encounterKey($player));
@@ -174,11 +175,12 @@ class GameController extends Controller
 
         $skill = $this->classSkill($player, $data['skill_id'] ?? null);
         $stats = $this->playerStats($player);
+        $effectiveMaxHp = ! empty($data['auto_farm']) ? $stats['max_hp'] * 100 : $stats['max_hp'];
         if ($player->hp <= 0) {
             return response()->json(['message' => 'HP หมดแล้ว กดพักฟื้นก่อนออกฟาร์มต่อ'], 422);
         }
 
-        $playerHp = min($player->hp, $stats['max_hp']);
+        $playerHp = min($player->hp, $effectiveMaxHp);
         $playerMp = min($player->mp, $stats['max_mp']);
         $turns = [];
 
@@ -573,10 +575,14 @@ class GameController extends Controller
 
     public function recover(Request $request, Player $player): JsonResponse
     {
+        $data = $request->validate([
+            'auto_farm' => ['nullable', 'boolean'],
+        ]);
         $stats = $this->playerStats($player);
+        $recoverHp = ! empty($data['auto_farm']) ? $stats['max_hp'] * 100 : $stats['max_hp'];
 
         $player->forceFill([
-            'hp' => $stats['max_hp'],
+            'hp' => $recoverHp,
             'mp' => $stats['max_mp'],
             'max_hp' => $stats['max_hp'],
             'max_mp' => $stats['max_mp'],

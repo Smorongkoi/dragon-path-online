@@ -1726,7 +1726,7 @@ function playerHpPercent(player = state.payload?.player) {
     return (Number(player?.hp || 0) / maxHp) * 100;
 }
 
-function canContinueAutoFarm() {
+function canContinueAutoFarm(type = state.autoFarm.type) {
     const player = state.payload?.player;
     if (!player) return false;
 
@@ -1734,6 +1734,10 @@ function canContinueAutoFarm() {
         setMode('world');
         stopAutoFarm('HP หมด กลับหน้าโลกแล้ว กดพักฟื้นเพื่อฟาร์มต่อ');
         return false;
+    }
+
+    if (type === 'monster') {
+        return true;
     }
 
     const threshold = autoHpThresholdPercent(player);
@@ -1762,11 +1766,14 @@ function updateAutoFarmUi() {
         els.autoContinueOnceButton.disabled = active;
     }
     if (els.autoRoundInput) {
-        els.autoRoundInput.disabled = active;
+        els.autoRoundInput.disabled = active && auto.type === 'monster';
     }
     if (els.autoFarmStatus) {
+        const progress = auto.targetRounds === null
+            ? `${auto.completedRounds} รอบ | จนกว่าจะหยุด/HP หมด`
+            : `${auto.completedRounds}/${auto.targetRounds}`;
         els.autoFarmStatus.textContent = active
-            ? `Auto ${autoFarmLabel()} ${auto.completedRounds}/${auto.targetRounds}`
+            ? `Auto ${autoFarmLabel()} ${progress}`
             : 'พร้อมฟาร์ม';
     }
 }
@@ -1784,13 +1791,18 @@ function startAutoFarm(type, forcedRounds = null) {
     state.autoFarm = {
         active: true,
         type,
-        targetRounds: forcedRounds ?? readAutoTargetRounds(),
+        targetRounds: forcedRounds ?? (type === 'monster' ? null : readAutoTargetRounds()),
         completedRounds: 0,
         running: false,
         stopRequested: false,
         timer: null,
     };
     updateAutoFarmUi();
+    if (state.autoFarm.targetRounds === null) {
+        log(`เริ่ม Auto ${autoFarmLabel(type)} จนกว่าจะกดหยุดหรือ HP หมด`);
+        scheduleAutoStep(250);
+        return;
+    }
     log(`เริ่ม Auto ${autoFarmLabel(type)} ${state.autoFarm.targetRounds} รอบ`);
     scheduleAutoStep(250);
 }
@@ -1812,9 +1824,14 @@ function completeAutoRound(type) {
 
     state.autoFarm.completedRounds += 1;
     updateAutoFarmUi();
+    if (state.autoFarm.targetRounds === null) {
+        log(`Auto ${autoFarmLabel(type)} จบรอบ ${state.autoFarm.completedRounds}`);
+        scheduleAutoStep(1000);
+        return;
+    }
     log(`Auto ${autoFarmLabel(type)} จบรอบ ${state.autoFarm.completedRounds}/${state.autoFarm.targetRounds}`);
 
-    if (state.autoFarm.stopRequested || state.autoFarm.completedRounds >= state.autoFarm.targetRounds) {
+    if (state.autoFarm.stopRequested || (state.autoFarm.targetRounds !== null && state.autoFarm.completedRounds >= state.autoFarm.targetRounds)) {
         stopAutoFarm(`Auto ${autoFarmLabel(type)} ครบ ${state.autoFarm.completedRounds} รอบแล้ว`);
         return;
     }
@@ -1845,12 +1862,25 @@ async function runAutoStep() {
     }
 }
 
+async function recoverAutoMonsterHp() {
+    const player = state.payload?.player;
+    if (!player || !state.autoFarm.active || state.autoFarm.type !== 'monster') return;
+
+    const payload = await request(`/game/player/${player.id}/recover`, {
+        method: 'POST',
+        body: JSON.stringify({ auto_farm: true }),
+    });
+    setPayload(payload);
+    setMode('world');
+}
+
 async function runAutoMonsterStep() {
     await ensurePayload();
-    if (!canContinueAutoFarm()) return;
+    if (!canContinueAutoFarm('monster')) return;
 
     const livingMonsters = state.payload.encounter?.monsters?.filter((monster) => monster.current_hp > 0) || [];
     if (livingMonsters.length === 0 || state.mode !== 'battle') {
+        await recoverAutoMonsterHp();
         await rollEncounter();
         await wait(450);
     }
@@ -1868,7 +1898,7 @@ async function runAutoMonsterStep() {
 
 async function runAutoBotStep() {
     await ensurePayload();
-    if (!canContinueAutoFarm()) return;
+    if (!canContinueAutoFarm('bot')) return;
 
     if (!state.payload.pvp || !state.payload.pvp.is_bot || state.pvpResolved) {
         await startBotPvp();
@@ -2054,6 +2084,7 @@ async function fight() {
             body: JSON.stringify({
                 skill_id: state.selectedSkillId,
                 target_monster_id: state.selectedMonsterId,
+                auto_farm: state.autoFarm.active && state.autoFarm.type === 'monster',
             }),
         });
         setPayload(payload);

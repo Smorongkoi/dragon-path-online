@@ -79,6 +79,7 @@ const els = {
     fightButton: document.getElementById('fight-button'),
     battleLog: document.getElementById('battle-log'),
     evolutionNote: document.getElementById('evolution-note'),
+    classEvolutionTree: document.getElementById('class-evolution-tree'),
     classChoices: document.getElementById('class-choices'),
     elementChoices: document.getElementById('element-choices'),
     monsterModeButton: document.getElementById('monster-mode-button'),
@@ -800,7 +801,7 @@ function setPayload(payload) {
 }
 
 function render() {
-    const { player, class: currentClass, nextExp, encounter, skills, availableEvolutions } = state.payload;
+    const { player, class: currentClass, nextExp, encounter, skills, availableEvolutions, classEvolutionTree } = state.payload;
     const monsters = encounter?.monsters || [];
     const livingMonsters = monsters.filter((monster) => monster.current_hp > 0);
     els.fightButton.disabled = livingMonsters.length === 0 || state.encounterResolved;
@@ -852,8 +853,78 @@ function render() {
     }
 
     state.scene?.setMonster(monsters.find((monster) => monster.id === state.selectedMonsterId) || monsters[0]);
+    renderClassEvolution(player, availableEvolutions, classEvolutionTree);
     els.modeRoot.dataset.mode = state.mode;
     state.scene?.setMode(state.mode);
+}
+
+function renderClassEvolution(player, availableEvolutions = [], tree = null) {
+    els.classChoices.innerHTML = '';
+    els.classEvolutionTree.innerHTML = '';
+
+    if (availableEvolutions.length === 0) {
+        els.evolutionNote.textContent = player.level < 10
+            ? 'ถึงเลเวล 10 เพื่อปลดล็อกการเปลี่ยนคลาส'
+            : 'ดูสายที่เลือกแล้ว และสายถัดไปที่ยังล็อกอยู่';
+    } else {
+        els.evolutionNote.textContent = 'เลือกได้ 1 สายเท่านั้น เมื่อเลือกแล้วสายอื่นจะถูกปิด';
+    }
+
+    const history = tree?.history || [];
+    if (history.length > 0) {
+        const historyLine = document.createElement('div');
+        historyLine.className = 'evolution-history';
+        history.forEach((item, index) => {
+            const chip = document.createElement('span');
+            chip.className = `evolution-chip ${item.status}`;
+            chip.textContent = item.name;
+            historyLine.appendChild(chip);
+
+            if (index < history.length - 1) {
+                const arrow = document.createElement('i');
+                arrow.textContent = '>';
+                historyLine.appendChild(arrow);
+            }
+        });
+        els.classEvolutionTree.appendChild(historyLine);
+    }
+
+    const rows = tree?.rows || [];
+    if (rows.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'tree-empty';
+        empty.textContent = 'ยังไม่มีสายถัดไปในข้อมูลเกม';
+        els.classEvolutionTree.appendChild(empty);
+        return;
+    }
+
+    rows.forEach((row) => {
+        const group = document.createElement('div');
+        group.className = 'evolution-row';
+
+        const header = document.createElement('div');
+        header.className = 'evolution-row-header';
+        header.innerHTML = `<span>${row.from_class_name}</span><b>LV ${row.required_level}</b>`;
+        group.appendChild(header);
+
+        const choiceList = document.createElement('div');
+        choiceList.className = 'evolution-choice-list';
+
+        row.choices.forEach((choice) => {
+            const node = document.createElement('button');
+            node.type = 'button';
+            node.className = `evolution-node ${choice.status}`;
+            node.disabled = !choice.can_choose;
+            node.innerHTML = `<strong>${choice.name}</strong><small>${choice.status_text}</small>`;
+            if (choice.can_choose) {
+                node.addEventListener('click', () => changeClass(choice.id));
+            }
+            choiceList.appendChild(node);
+        });
+
+        group.appendChild(choiceList);
+        els.classEvolutionTree.appendChild(group);
+    });
 }
 
 function renderEncounter(encounter, monsters) {

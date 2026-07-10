@@ -41,6 +41,7 @@
                     <div class="evolution-strip">
                         <strong>Class Evolution</strong>
                         <p id="evolution-note">ถึงเลเวล 10 เพื่อปลดล็อกการเปลี่ยนคลาส</p>
+                        <div id="class-evolution-tree" class="class-evolution-tree"></div>
                         <div id="class-choices" class="button-list"></div>
                     </div>
                     <p id="class-name">Class: คนปกติ</p>

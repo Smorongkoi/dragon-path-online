@@ -88,6 +88,46 @@ class GameFlowTest extends TestCase
             ->assertJsonPath('class.name', CharacterClass::find('mage')->name);
     }
 
+    public function test_class_evolution_tree_marks_locked_and_closed_paths(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $player = Player::create([
+            'browser_token' => 'class-tree-token',
+            'name' => 'Tree Tester',
+            'level' => 10,
+            'class_id' => 'normal',
+            'exp' => 0,
+            'hp' => 100,
+            'max_hp' => 100,
+            'mp' => 30,
+            'max_mp' => 30,
+            'atk' => 10,
+            'def' => 5,
+            'inventory' => [],
+            'class_history' => ['normal'],
+        ]);
+
+        $bootstrap = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'class-tree-token',
+            'name' => 'Tree Tester',
+        ])->assertOk();
+
+        $this->assertSame('available', $bootstrap->json('classEvolutionTree.rows.0.choices.1.status'));
+        $this->assertTrue($bootstrap->json('classEvolutionTree.rows.0.choices.1.can_choose'));
+
+        $changed = $this->postJson("/game/player/{$player->id}/change-class", [
+            'class_id' => 'mage',
+        ])->assertOk();
+
+        $statuses = collect($changed->json('classEvolutionTree.rows.0.choices'))
+            ->pluck('status', 'id');
+
+        $this->assertSame('current', $statuses['mage']);
+        $this->assertSame('closed', $statuses['cavalry']);
+        $this->assertSame('closed', $statuses['archer']);
+    }
+
     public function test_monster_rolls_dice_for_counter_attack(): void
     {
         $this->seed(GameSeedSeeder::class);

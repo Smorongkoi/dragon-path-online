@@ -282,6 +282,135 @@ input {
     font-size: 13px;
 }
 
+.class-evolution-tree {
+    display: grid;
+    gap: 10px;
+}
+
+.evolution-history {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.evolution-history i {
+    color: #7dd3fc;
+    font-style: normal;
+    font-weight: 800;
+}
+
+.evolution-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 9px;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    color: #dbeafe;
+    background: rgba(30, 41, 59, 0.86);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.evolution-chip.current {
+    border-color: #38bdf8;
+    color: #eff6ff;
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.7), rgba(37, 99, 235, 0.48));
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.24);
+}
+
+.evolution-row {
+    display: grid;
+    gap: 7px;
+}
+
+.evolution-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #c7d2fe;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.evolution-row-header b {
+    color: #fde68a;
+}
+
+.evolution-choice-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.evolution-node {
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    min-height: 58px;
+    padding: 7px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #dbeafe;
+    text-align: left;
+}
+
+.evolution-node strong,
+.evolution-node small {
+    overflow-wrap: anywhere;
+}
+
+.evolution-node strong {
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.evolution-node small {
+    color: #94a3b8;
+    font-size: 10px;
+    line-height: 1.25;
+}
+
+.evolution-node.available {
+    border-color: #22c55e;
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.44), rgba(21, 128, 61, 0.36));
+    box-shadow: 0 0 18px rgba(34, 197, 94, 0.16);
+    cursor: pointer;
+}
+
+.evolution-node.available small {
+    color: #bbf7d0;
+}
+
+.evolution-node.current {
+    border-color: #38bdf8;
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.48), rgba(37, 99, 235, 0.34));
+}
+
+.evolution-node.completed {
+    border-color: #818cf8;
+}
+
+.evolution-node.locked {
+    opacity: 0.68;
+}
+
+.evolution-node.closed {
+    opacity: 0.45;
+    filter: grayscale(0.8);
+}
+
+.tree-empty {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
 .element-strip {
     display: grid;
     gap: 8px;

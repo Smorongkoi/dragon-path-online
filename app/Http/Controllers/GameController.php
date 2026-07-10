@@ -538,6 +538,7 @@ class GameController extends Controller
             'class' => CharacterClass::find($player->class_id),
             'nextExp' => $this->expRequired($player->level),
             'availableEvolutions' => $this->availableEvolutions($player)->values(),
+            'classEvolutionTree' => $this->classEvolutionTree($player),
             'skills' => Skill::whereIn('class_id', $skillClassIds)
                 ->orderByRaw('case when class_id = ? then 0 else 1 end', [$player->class_id])
                 ->get()
@@ -1118,6 +1119,89 @@ class GameController extends Controller
         return CharacterClass::whereIn('id', $targetClassIds)
             ->get()
             ->sortBy(fn (CharacterClass $class) => $targetClassIds->search($class->id));
+    }
+
+    private function classEvolutionTree(Player $player): array
+    {
+        $history = array_values(array_unique($player->class_history ?: ['normal']));
+        if ($history === []) {
+            $history = ['normal'];
+        }
+
+        $historyLookup = array_flip($history);
+        $currentClassId = $player->class_id;
+        $rows = [];
+
+        foreach ($history as $index => $fromClassId) {
+            $choices = ClassEvolution::where('from_class_id', $fromClassId)
+                ->orderBy('choice_order')
+                ->get();
+
+            if ($choices->isEmpty()) {
+                continue;
+            }
+
+            $selectedNextId = $history[$index + 1] ?? null;
+            $targetClassIds = $choices->pluck('to_class_id');
+            $classes = CharacterClass::whereIn('id', $targetClassIds)
+                ->get()
+                ->keyBy('id');
+            $requiredLevel = (int) $choices->min('required_level');
+            $canChooseAtThisRow = $selectedNextId === null
+                && $fromClassId === $currentClassId
+                && $player->level >= $requiredLevel
+                && $player->level % 10 === 0;
+
+            $rows[] = [
+                'from_class_id' => $fromClassId,
+                'from_class_name' => CharacterClass::find($fromClassId)?->name ?? $fromClassId,
+                'required_level' => $requiredLevel,
+                'is_current_branch' => $fromClassId === $currentClassId || isset($historyLookup[$fromClassId]),
+                'choices' => $choices->map(function (ClassEvolution $choice) use ($classes, $historyLookup, $currentClassId, $selectedNextId, $canChooseAtThisRow, $player) {
+                    $class = $classes->get($choice->to_class_id);
+                    $status = 'locked';
+                    $statusText = "ปลดล็อก LV {$choice->required_level}";
+                    $canChoose = false;
+
+                    if (isset($historyLookup[$choice->to_class_id])) {
+                        $status = $choice->to_class_id === $currentClassId ? 'current' : 'completed';
+                        $statusText = $status === 'current' ? 'สายปัจจุบัน' : 'ผ่านมาแล้ว';
+                    } elseif ($selectedNextId !== null) {
+                        $status = 'closed';
+                        $statusText = 'ปิดเส้นทาง';
+                    } elseif ($canChooseAtThisRow) {
+                        $status = 'available';
+                        $statusText = 'ปลดล็อกแล้ว';
+                        $canChoose = true;
+                    } elseif ($player->level >= $choice->required_level) {
+                        $statusText = 'รอจังหวะเปลี่ยนคลาส';
+                    }
+
+                    return [
+                        'id' => $choice->to_class_id,
+                        'name' => $class?->name ?? $choice->to_class_id,
+                        'required_level' => $choice->required_level,
+                        'status' => $status,
+                        'status_text' => $statusText,
+                        'can_choose' => $canChoose,
+                    ];
+                })->values(),
+            ];
+        }
+
+        return [
+            'history' => CharacterClass::whereIn('id', $history)
+                ->get()
+                ->sortBy(fn (CharacterClass $class) => array_search($class->id, $history, true))
+                ->map(fn (CharacterClass $class) => [
+                    'id' => $class->id,
+                    'name' => $class->name,
+                    'milestone_level' => $class->milestone_level,
+                    'status' => $class->id === $currentClassId ? 'current' : 'completed',
+                ])
+                ->values(),
+            'rows' => $rows,
+        ];
     }
 
     private function encounterKey(Player $player): string

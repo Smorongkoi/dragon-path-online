@@ -5,6 +5,7 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const tokenKey = 'dragon-path-player-token';
 const browserToken = localStorage.getItem(tokenKey) || crypto.randomUUID();
 localStorage.setItem(tokenKey, browserToken);
+const gameFontFamily = 'Noto Sans Thai, Arial, sans-serif';
 
 const state = {
     payload: null,
@@ -236,10 +237,10 @@ class BattleScene extends Phaser.Scene {
         this.ground = this.add.rectangle(400, 380, 800, 150, 0x67c56b).setAlpha(0.95);
         this.sun = this.add.circle(170, 130, 58, 0xffd166, 0.65);
         this.path = this.add.ellipse(410, 404, 620, 90, 0xf1d58a, 0.55);
-        this.titleText = this.add.text(28, 24, 'แผนที่โลก', { fontFamily: 'Arial', fontSize: '18px', color: '#184a35' });
+        this.titleText = this.add.text(28, 24, 'แผนที่โลก', { fontFamily: gameFontFamily, fontSize: '18px', color: '#184a35' });
         this.player = this.add.sprite(230, 310, 'playerTex').setScale(2.2);
         this.monster = this.add.sprite(570, 300, 'monster_default').setScale(2.4);
-        this.monsterName = this.add.text(500, 385, 'Monster', { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' });
+        this.monsterName = this.add.text(500, 385, 'Monster', { fontFamily: gameFontFamily, fontSize: '18px', color: '#ffffff' });
         this.monster.setVisible(false);
         this.monsterName.setVisible(false);
         this.tweens.add({ targets: this.player, scaleX: 2.28, scaleY: 2.28, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -305,7 +306,7 @@ class BattleScene extends Phaser.Scene {
 
     playMonsterDeath(monsterName = 'Monster') {
         const deathText = this.add.text(this.monster.x, this.monster.y - 120, `${monsterName} defeated`, {
-            fontFamily: 'Arial',
+            fontFamily: gameFontFamily,
             fontSize: '28px',
             fontStyle: 'bold',
             color: '#ffd166',
@@ -349,7 +350,7 @@ class BattleScene extends Phaser.Scene {
             const y = actor === 'player' ? this.monster.y - 86 : this.player.y - 86;
             const effectText = this.effectText(effect);
             const floating = this.add.text(x, y, `${amount > 0 ? `-${amount}` : 'MISS'}${effectText}`, {
-                fontFamily: 'Arial',
+                fontFamily: gameFontFamily,
                 fontSize: effect === 'x2' ? '34px' : '30px',
                 fontStyle: 'bold',
                 color,
@@ -390,7 +391,7 @@ class BattleScene extends Phaser.Scene {
         const onlineActor = playerId ? this.onlineActors?.get(String(playerId)) : null;
         const target = onlineActor?.sprite || (side === 'player' ? this.player : this.monster);
         const bubble = this.add.text(target.x, target.y - 132, message, {
-            fontFamily: 'Arial',
+            fontFamily: gameFontFamily,
             fontSize: '17px',
             color: '#10131c',
             backgroundColor: '#ffffff',
@@ -519,7 +520,7 @@ BattleScene.prototype.createSceneLayers = function createSceneLayers() {
         this.colosseum.flags.push(this.add.triangle(130 + i * 92, 144, 0, 0, 34, 10, 0, 20, i % 2 ? 0xdc2626 : 0xfacc15, 0));
     }
     this.titleText = this.add.text(28, 94, 'แผนที่โลก', {
-        fontFamily: 'Arial',
+        fontFamily: gameFontFamily,
         fontSize: '22px',
         fontStyle: 'bold',
         color: '#f8fafc',
@@ -544,7 +545,7 @@ BattleScene.prototype.create = function createGameScene() {
     this.player = this.add.sprite(230, 310, 'playerTex').setScale(2.1);
     this.monster = this.add.sprite(570, 300, 'monster_default').setScale(2.25);
     this.playerNameTag = this.add.text(230, 190, 'You', {
-        fontFamily: 'Arial',
+        fontFamily: gameFontFamily,
         fontSize: '16px',
         fontStyle: 'bold',
         color: '#ffffff',
@@ -552,7 +553,7 @@ BattleScene.prototype.create = function createGameScene() {
         strokeThickness: 4,
     }).setOrigin(0.5).setDepth(20);
     this.monsterName = this.add.text(500, 385, 'Monster', {
-        fontFamily: 'Arial',
+        fontFamily: gameFontFamily,
         fontSize: '18px',
         fontStyle: 'bold',
         color: '#ffffff',
@@ -679,7 +680,7 @@ BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = [])
             const sprite = this.add.sprite(0, 0, 'playerTex').setScale(1.55).setDepth(12);
             const shadow = this.add.ellipse(0, 0, 88, 20, 0x000000, 0.18).setDepth(10);
             const nameTag = this.add.text(0, 0, player.name, {
-                fontFamily: 'Arial',
+                fontFamily: gameFontFamily,
                 fontSize: '14px',
                 fontStyle: 'bold',
                 color: '#e0f2fe',

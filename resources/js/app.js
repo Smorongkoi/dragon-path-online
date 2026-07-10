@@ -26,7 +26,12 @@ const state = {
     selectedOpponentId: null,
     pvpResolved: false,
     worldTimer: null,
+    worldPlayerX: Number(localStorage.getItem('dragon-path-world-x') || 0.38),
 };
+
+if (Number.isNaN(state.worldPlayerX)) {
+    state.worldPlayerX = 0.38;
+}
 
 const els = {
     saveStatus: document.getElementById('save-status'),
@@ -535,6 +540,14 @@ BattleScene.prototype.create = function createGameScene() {
     this.monsterShadow = this.add.ellipse(570, 374, 142, 28, 0x000000, 0.26);
     this.player = this.add.sprite(230, 310, 'playerTex').setScale(2.1);
     this.monster = this.add.sprite(570, 300, 'monster_default').setScale(2.25);
+    this.playerNameTag = this.add.text(230, 190, 'You', {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        stroke: '#0f172a',
+        strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(20);
     this.monsterName = this.add.text(500, 385, 'Monster', {
         fontFamily: 'Arial',
         fontSize: '18px',
@@ -546,6 +559,7 @@ BattleScene.prototype.create = function createGameScene() {
     this.monster.setVisible(false);
     this.monsterShadow.setVisible(false);
     this.monsterName.setVisible(false);
+    this.onlineActors = new Map();
     this.tweens.add({ targets: this.player, y: '+=8', duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: this.monster, y: '+=10', duration: 920, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: this.clouds, x: '+=28', duration: 9000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -555,6 +569,7 @@ BattleScene.prototype.create = function createGameScene() {
 };
 
 BattleScene.prototype.setMode = function setGameSceneMode(mode) {
+    this.currentMode = mode;
     const isWorld = mode === 'world';
     const isPvp = mode === 'pvp';
     this.bg.setFillStyle(isWorld ? 0x7dd3fc : (isPvp ? 0x26435f : 0x101827));
@@ -574,9 +589,13 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.colosseum.arches.forEach((arch) => arch.setAlpha(isPvp ? 0.92 : 0));
     this.colosseum.flags.forEach((flag) => flag.setAlpha(isPvp ? 0.9 : 0));
     this.titleText.setText(isWorld ? 'แผนที่โลก' : (isPvp ? 'ลานประลอง' : 'ดันเจี้ยน'));
+    this.playerNameTag.setVisible(isWorld);
+    this.playerShadow.setVisible(true);
+    this.player.setVisible(true);
     this.monster.setVisible(!isWorld);
     this.monsterShadow.setVisible(!isWorld);
     this.monsterName.setVisible(!isWorld);
+    this.positionOnlineActors(this.scale.width, this.scale.height * 0.68 - 72);
     this.resizeScene({ width: this.scale.width, height: this.scale.height });
 };
 
@@ -584,7 +603,7 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     const width = gameSize.width || 800;
     const height = gameSize.height || 500;
     const groundY = height * 0.68;
-    const playerX = width * 0.38;
+    const playerX = width * (this.currentMode === 'world' ? state.worldPlayerX : 0.38);
     const monsterX = width * 0.62;
     const actorY = groundY - 72;
 
@@ -620,8 +639,84 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     this.playerShadow.setPosition(playerX, actorY + 88);
     this.monsterShadow.setPosition(monsterX, actorY + 88);
     this.player.setPosition(playerX, actorY);
+    this.playerNameTag.setPosition(playerX, actorY - 118);
     this.monster.setPosition(monsterX, actorY);
     this.monsterName.setPosition(monsterX, actorY - 150);
+    this.positionOnlineActors(width, actorY);
+};
+
+BattleScene.prototype.setPlayerName = function setPlayerName(name) {
+    this.playerNameTag?.setText(name || 'Adventurer');
+};
+
+BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(direction) {
+    if (this.currentMode !== 'world') return;
+
+    state.worldPlayerX = Math.max(0.24, Math.min(0.76, state.worldPlayerX + (direction * 0.045)));
+    localStorage.setItem('dragon-path-world-x', String(state.worldPlayerX));
+    this.resizeScene({ width: this.scale.width, height: this.scale.height });
+};
+
+BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = []) {
+    if (!this.onlineActors) return;
+
+    const activeIds = new Set(players.map((player) => String(player.id)));
+    this.onlineActors.forEach((actor, id) => {
+        if (!activeIds.has(id)) {
+            actor.shadow.destroy();
+            actor.sprite.destroy();
+            actor.nameTag.destroy();
+            this.onlineActors.delete(id);
+        }
+    });
+
+    players.forEach((player) => {
+        const id = String(player.id);
+        if (!this.onlineActors.has(id)) {
+            const sprite = this.add.sprite(0, 0, 'playerTex').setScale(1.55).setDepth(12);
+            const shadow = this.add.ellipse(0, 0, 88, 20, 0x000000, 0.18).setDepth(10);
+            const nameTag = this.add.text(0, 0, player.name, {
+                fontFamily: 'Arial',
+                fontSize: '14px',
+                fontStyle: 'bold',
+                color: '#e0f2fe',
+                stroke: '#0f172a',
+                strokeThickness: 4,
+            }).setOrigin(0.5).setDepth(20);
+
+            sprite.setTint(this.onlinePlayerTint(player));
+            this.onlineActors.set(id, { player, sprite, shadow, nameTag });
+        } else {
+            const actor = this.onlineActors.get(id);
+            actor.player = player;
+            actor.nameTag.setText(player.name);
+            actor.sprite.setTint(this.onlinePlayerTint(player));
+        }
+    });
+
+    this.positionOnlineActors(this.scale.width, this.scale.height * 0.68 - 72);
+};
+
+BattleScene.prototype.onlinePlayerTint = function onlinePlayerTint(player) {
+    const tints = [0x60a5fa, 0x34d399, 0xfbbf24, 0xf472b6, 0xa78bfa, 0x2dd4bf];
+    return tints[Number(player.id) % tints.length];
+};
+
+BattleScene.prototype.positionOnlineActors = function positionOnlineActors(width, actorY) {
+    if (!this.onlineActors) return;
+
+    const isWorld = this.currentMode === 'world';
+    let index = 0;
+    this.onlineActors.forEach((actor) => {
+        const base = 0.28 + ((Number(actor.player.id) * 0.137) % 0.44);
+        const rowOffset = (index % 3) * 22;
+        const x = width * base;
+        const y = actorY + 34 + rowOffset;
+        actor.shadow.setPosition(x, y + 76).setVisible(isWorld);
+        actor.sprite.setPosition(x, y).setVisible(isWorld);
+        actor.nameTag.setPosition(x, y - 104).setVisible(isWorld);
+        index += 1;
+    });
 };
 
 new Phaser.Game({
@@ -733,6 +828,8 @@ function render() {
     renderCombatReadout(player, monsters, skills);
     renderWorldPanels(state.payload.world || {});
     renderPvpPanel(state.payload.pvp, skills);
+    state.scene?.setPlayerName(player.name);
+    state.scene?.setOnlinePlayers(state.payload.world?.onlinePlayers || []);
 
     els.classChoices.innerHTML = '';
     if (availableEvolutions.length === 0) {
@@ -1331,6 +1428,16 @@ els.chatSendButton?.addEventListener('click', sendChat);
 els.chatInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
         sendChat();
+    }
+});
+document.addEventListener('keydown', (event) => {
+    if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) {
+        return;
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        state.scene?.moveWorldPlayer(event.key === 'ArrowLeft' ? -1 : 1);
     }
 });
 els.soundToggleButton?.addEventListener('click', () => setSfxEnabled(!audio.sfxEnabled));

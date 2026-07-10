@@ -30,6 +30,15 @@ const state = {
     worldPlayerX: Number(localStorage.getItem('dragon-path-world-x') || 0.38),
     worldPlayerY: Number(localStorage.getItem('dragon-path-world-y') || 0.52),
     walking: false,
+    autoFarm: {
+        active: false,
+        type: null,
+        targetRounds: 1,
+        completedRounds: 0,
+        running: false,
+        stopRequested: false,
+        timer: null,
+    },
 };
 
 if (Number.isNaN(state.worldPlayerX)) {
@@ -104,6 +113,13 @@ const els = {
     chatSendButton: document.getElementById('chat-send-button'),
     totalPlayersText: document.getElementById('total-players-text'),
     onlinePlayersText: document.getElementById('online-players-text'),
+    autoRoundInput: document.getElementById('auto-round-input'),
+    autoMonsterButton: document.getElementById('auto-monster-button'),
+    autoBotButton: document.getElementById('auto-bot-button'),
+    autoContinueOnceButton: document.getElementById('auto-continue-once-button'),
+    autoReturnButton: document.getElementById('auto-return-button'),
+    autoStopButton: document.getElementById('auto-stop-button'),
+    autoFarmStatus: document.getElementById('auto-farm-status'),
 };
 
 const elementMeta = {
@@ -1073,6 +1089,7 @@ function render() {
     renderCombatReadout(player, monsters, skills);
     renderWorldPanels(state.payload.world || {});
     renderPvpPanel(state.payload.pvp, skills);
+    updateAutoFarmUi();
     state.scene?.setPlayerName(player.name);
     state.scene?.setPlayerClass(player.class_id || 'normal');
     state.scene?.setOnlinePlayers(state.payload.world?.onlinePlayers || []);
@@ -1439,6 +1456,153 @@ function setMode(mode) {
     }
 }
 
+function wait(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function autoFarmLabel(type = state.autoFarm.type) {
+    return type === 'bot' ? 'บอท' : 'มอน';
+}
+
+function readAutoTargetRounds() {
+    const rounds = Number.parseInt(els.autoRoundInput?.value || '1', 10);
+    return Math.max(1, Math.min(99, Number.isNaN(rounds) ? 1 : rounds));
+}
+
+function updateAutoFarmUi() {
+    const auto = state.autoFarm;
+    const active = auto.active;
+    if (els.autoStopButton) {
+        els.autoStopButton.disabled = !active;
+    }
+    if (els.autoMonsterButton) {
+        els.autoMonsterButton.disabled = active;
+    }
+    if (els.autoBotButton) {
+        els.autoBotButton.disabled = active;
+    }
+    if (els.autoContinueOnceButton) {
+        els.autoContinueOnceButton.disabled = active;
+    }
+    if (els.autoRoundInput) {
+        els.autoRoundInput.disabled = active;
+    }
+    if (els.autoFarmStatus) {
+        els.autoFarmStatus.textContent = active
+            ? `Auto ${autoFarmLabel()} ${auto.completedRounds}/${auto.targetRounds}`
+            : 'พร้อมฟาร์ม';
+    }
+}
+
+function clearAutoTimer() {
+    if (state.autoFarm.timer) {
+        window.clearTimeout(state.autoFarm.timer);
+        state.autoFarm.timer = null;
+    }
+}
+
+function startAutoFarm(type, forcedRounds = null) {
+    if (state.autoFarm.active) return;
+
+    state.autoFarm = {
+        active: true,
+        type,
+        targetRounds: forcedRounds ?? readAutoTargetRounds(),
+        completedRounds: 0,
+        running: false,
+        stopRequested: false,
+        timer: null,
+    };
+    updateAutoFarmUi();
+    log(`เริ่ม Auto ${autoFarmLabel(type)} ${state.autoFarm.targetRounds} รอบ`);
+    scheduleAutoStep(250);
+}
+
+function stopAutoFarm(reason = 'หยุด Auto แล้ว') {
+    clearAutoTimer();
+    const wasActive = state.autoFarm.active;
+    state.autoFarm.active = false;
+    state.autoFarm.running = false;
+    state.autoFarm.stopRequested = true;
+    updateAutoFarmUi();
+    if (wasActive) {
+        log(reason);
+    }
+}
+
+function completeAutoRound(type) {
+    if (!state.autoFarm.active || state.autoFarm.type !== type) return;
+
+    state.autoFarm.completedRounds += 1;
+    updateAutoFarmUi();
+    log(`Auto ${autoFarmLabel(type)} จบรอบ ${state.autoFarm.completedRounds}/${state.autoFarm.targetRounds}`);
+
+    if (state.autoFarm.stopRequested || state.autoFarm.completedRounds >= state.autoFarm.targetRounds) {
+        stopAutoFarm(`Auto ${autoFarmLabel(type)} ครบ ${state.autoFarm.completedRounds} รอบแล้ว`);
+        return;
+    }
+
+    scheduleAutoStep(1000);
+}
+
+function scheduleAutoStep(delay = 750) {
+    clearAutoTimer();
+    if (!state.autoFarm.active || state.autoFarm.stopRequested) return;
+    state.autoFarm.timer = window.setTimeout(runAutoStep, delay);
+}
+
+async function runAutoStep() {
+    if (!state.autoFarm.active || state.autoFarm.running || state.autoFarm.stopRequested) return;
+
+    state.autoFarm.running = true;
+    try {
+        if (state.autoFarm.type === 'bot') {
+            await runAutoBotStep();
+        } else {
+            await runAutoMonsterStep();
+        }
+    } catch (error) {
+        stopAutoFarm(`Auto หยุด: ${error.message}`);
+    } finally {
+        state.autoFarm.running = false;
+    }
+}
+
+async function runAutoMonsterStep() {
+    await ensurePayload();
+
+    const livingMonsters = state.payload.encounter?.monsters?.filter((monster) => monster.current_hp > 0) || [];
+    if (livingMonsters.length === 0 || state.mode !== 'battle') {
+        await rollEncounter();
+        await wait(450);
+    }
+
+    const targets = state.payload.encounter?.monsters?.filter((monster) => monster.current_hp > 0) || [];
+    if (targets.length === 0) {
+        completeAutoRound('monster');
+        return;
+    }
+
+    state.selectedMonsterId = targets[0].id;
+    render();
+    await fight();
+}
+
+async function runAutoBotStep() {
+    await ensurePayload();
+
+    if (!state.payload.pvp || !state.payload.pvp.is_bot || state.pvpResolved) {
+        await startBotPvp();
+        await wait(450);
+    }
+
+    if (!state.payload.pvp || !state.payload.pvp.is_bot) {
+        throw new Error('เริ่มบอท PVP ไม่สำเร็จ');
+    }
+
+    await fightPvp();
+}
+
 async function startPvp() {
     await ensurePayload();
 
@@ -1516,7 +1680,16 @@ function showPvpBattle(battle) {
     if (battle.won || battle.lost) {
         log(`${battle.isBot ? 'บอท PVP' : 'PVP'}: ${battle.won ? 'ชนะ' : 'แพ้'} | Rating ${battle.ratingChange > 0 ? '+' : ''}${battle.ratingChange}`);
         playSfx(battle.won ? 'victory' : 'hit');
-        window.setTimeout(() => refreshWorld(), 800);
+        window.setTimeout(async () => {
+            await refreshWorld();
+            if (battle.isBot && state.autoFarm.active && state.autoFarm.type === 'bot') {
+                completeAutoRound('bot');
+            } else if (battle.isBot && els.autoFarmStatus) {
+                els.autoFarmStatus.textContent = 'จบบอทแล้ว: กด Auto บอท เพื่อสู้ต่อ หรือกลับหน้าโลก';
+            }
+        }, 800);
+    } else if (battle.isBot && state.autoFarm.active && state.autoFarm.type === 'bot') {
+        scheduleAutoStep(900);
     }
 }
 
@@ -1711,6 +1884,9 @@ function showBattle(battle) {
     }
 
     if (!battle.won && !battle.playerDefeated) {
+        if (state.autoFarm.active && state.autoFarm.type === 'monster') {
+            scheduleAutoStep(900);
+        }
         return;
     }
 
@@ -1719,7 +1895,20 @@ function showBattle(battle) {
         render();
         if (battle.won) playSfx('victory');
         log('กลับสู่แผนที่โลกแล้ว กดสำรวจแผนที่เพื่อไปต่อ');
+        handleMonsterRoundFinished(battle);
     }, battle.won ? 1900 : 900);
+}
+
+function handleMonsterRoundFinished(battle) {
+    if (state.autoFarm.active && state.autoFarm.type === 'monster') {
+        if (battle.playerDefeated) {
+            stopAutoFarm('Auto มอนหยุด เพราะ HP หมด');
+        } else {
+            completeAutoRound('monster');
+        }
+    } else if (els.autoFarmStatus) {
+        els.autoFarmStatus.textContent = 'จบรอบมอนแล้ว: กด Auto มอน เพื่อสู้ต่อ หรืออยู่หน้าโลก';
+    }
 }
 
 function bossStatLabel(stat) {
@@ -1800,15 +1989,41 @@ els.toggleMenuButton.addEventListener('click', () => {
 });
 els.monsterModeButton?.addEventListener('click', () => {
     playSfx('click');
+    if (state.autoFarm.active) stopAutoFarm('หยุด Auto แล้วกลับหน้าโลก');
     setMode('world');
 });
 els.arenaModeButton?.addEventListener('click', () => {
     playSfx('click');
+    if (state.autoFarm.active) stopAutoFarm('หยุด Auto แล้วเข้าลานประลอง');
     startPvp();
 });
 els.botPvpButton?.addEventListener('click', () => {
     playSfx('click');
+    if (state.autoFarm.active) stopAutoFarm('หยุด Auto เดิมแล้วเริ่มบอทใหม่');
     startBotPvp();
+});
+els.autoMonsterButton?.addEventListener('click', () => {
+    playSfx('click');
+    startAutoFarm('monster');
+});
+els.autoBotButton?.addEventListener('click', () => {
+    playSfx('click');
+    startAutoFarm('bot');
+});
+els.autoContinueOnceButton?.addEventListener('click', () => {
+    playSfx('click');
+    const type = state.payload?.pvp?.is_bot || state.mode === 'pvp' ? 'bot' : 'monster';
+    startAutoFarm(type, 1);
+});
+els.autoReturnButton?.addEventListener('click', () => {
+    playSfx('click');
+    if (state.autoFarm.active) stopAutoFarm('หยุด Auto แล้วกลับหน้าโลก');
+    setMode('world');
+    refreshWorld();
+});
+els.autoStopButton?.addEventListener('click', () => {
+    playSfx('click');
+    stopAutoFarm('หยุด Auto ทันที');
 });
 els.mapMoveButtons?.forEach((button) => {
     button.addEventListener('click', () => {

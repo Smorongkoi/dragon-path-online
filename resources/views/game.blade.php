@@ -188,6 +188,18 @@
                     </div>
                 </div>
                 <button id="pvp-fight-button" class="primary-action pvp-panel" type="button" disabled>โจมตีผู้เล่น</button>
+                <div class="auto-farm-panel">
+                    <label>
+                        <span>Auto รอบ</span>
+                        <input id="auto-round-input" type="number" min="1" max="99" value="3">
+                    </label>
+                    <button id="auto-monster-button" type="button">Auto มอน</button>
+                    <button id="auto-bot-button" type="button">Auto บอท</button>
+                    <button id="auto-continue-once-button" type="button">สู้ต่อ 1</button>
+                    <button id="auto-return-button" type="button">กลับโลก</button>
+                    <button id="auto-stop-button" type="button" disabled>หยุด</button>
+                    <span id="auto-farm-status">พร้อมฟาร์ม</span>
+                </div>
             </aside>
         </section>
 

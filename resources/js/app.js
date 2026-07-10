@@ -880,10 +880,11 @@ function renderEncounter(encounter, monsters) {
         const row = document.createElement('button');
         row.type = 'button';
         row.className = index === 0 ? 'selected' : '';
-        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''}`;
+        const bossClass = monster.is_boss && monster.class_name ? ` (${monster.class_name})` : '';
+        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name}${bossClass} LV ${monster.level}${monster.is_boss ? ' บอส' : ''}`;
         row.className = monster.id === state.selectedMonsterId ? 'selected' : '';
         row.disabled = monster.current_hp <= 0;
-        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name} LV ${monster.level}${monster.is_boss ? ' บอส' : ''} HP ${monster.current_hp}/${monster.hp}`;
+        row.textContent = `${index + 1}. ${element.fullLabel} ${monster.name}${bossClass} LV ${monster.level}${monster.is_boss ? ' บอส' : ''} HP ${monster.current_hp}/${monster.hp}`;
         row.style.borderColor = element.color;
         row.addEventListener('click', () => {
             state.selectedMonsterId = monster.id;

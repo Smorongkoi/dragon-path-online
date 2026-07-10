@@ -649,8 +649,8 @@ class GameController extends Controller
     {
         $playerStats = $this->playerStats($player);
         $botLevel = max(1, min(100, $player->level + random_int(-2, 2)));
-        $classes = CharacterClass::where('milestone_level', '<=', $botLevel)->pluck('id')->all();
-        $botClassId = $classes[array_rand($classes)] ?? 'normal';
+        $botClass = $this->randomClassForLevel($botLevel);
+        $botClassId = $botClass?->id ?? 'normal';
         $botElement = ['earth', 'water', 'wind', 'fire'][array_rand(['earth', 'water', 'wind', 'fire'])];
         $botStats = $this->botStats($botLevel, $botClassId);
 
@@ -679,6 +679,7 @@ class GameController extends Controller
                 'name' => 'Bot '.random_int(100, 999),
                 'level' => $botLevel,
                 'class_id' => $botClassId,
+                'class_name' => $botClass?->name,
                 'element' => $botElement,
                 'element_label' => $this->elementLabel($botElement),
                 'element_color' => $this->elementColor($botElement),
@@ -741,22 +742,29 @@ class GameController extends Controller
         }
 
         $monsters = [];
+        $bossClass = $isBoss ? $this->nextBossClassForLevel($targetLevel) : null;
         for ($i = 0; $i < $count; $i++) {
             $base = $baseMonsters[$i % $baseMonsters->count()];
             $levelScale = max(1, $targetLevel) / max(1, $base->level);
             $element = $forcedElement ?? $this->randomMonsterElement();
+            $classHpBonus = $isBoss ? (int) ($bossClass?->hp_bonus ?? 0) : 0;
+            $classAtkBonus = $isBoss ? (int) ($bossClass?->atk_bonus ?? 0) : 0;
+            $classDefBonus = $isBoss ? (int) ($bossClass?->def_bonus ?? 0) : 0;
+            $monsterHp = $this->scaledMonsterHp($base, $targetLevel, $levelScale, $isBoss) + $classHpBonus;
             $monster = [
                 'id' => "{$base->id}-{$i}",
                 'base_id' => $base->id,
                 'name' => $isBoss ? "Boss {$base->name}" : $base->name,
                 'level' => $targetLevel,
-                'hp' => $this->scaledMonsterHp($base, $targetLevel, $levelScale, $isBoss),
-                'current_hp' => $this->scaledMonsterHp($base, $targetLevel, $levelScale, $isBoss),
-                'atk' => max(1, (int) floor($base->atk * $levelScale * ($isBoss ? 1.6 : 1))),
-                'def' => max(0, (int) floor($base->def * $levelScale * ($isBoss ? 1.35 : 1))),
+                'hp' => $monsterHp,
+                'current_hp' => $monsterHp,
+                'atk' => max(1, (int) floor($base->atk * $levelScale * ($isBoss ? 1.6 : 1)) + $classAtkBonus),
+                'def' => max(0, (int) floor($base->def * $levelScale * ($isBoss ? 1.35 : 1)) + $classDefBonus),
                 'exp_reward' => max(1, (int) floor($base->exp_reward * $levelScale * ($isBoss ? 3.2 : 1))),
                 'sprite_key' => $base->sprite_key,
                 'is_boss' => $isBoss,
+                'class_id' => $bossClass?->id,
+                'class_name' => $bossClass?->name,
                 'element' => $element,
                 'element_label' => $this->elementLabel($element),
                 'element_color' => $this->elementColor($element),
@@ -957,6 +965,41 @@ class GameController extends Controller
         $normalHp = (int) floor(($base->hp * $levelScale) + $levelBonus);
 
         return max(20, (int) floor($normalHp * ($isBoss ? 2.4 : 1)));
+    }
+
+    private function randomClassForLevel(int $level): ?CharacterClass
+    {
+        $milestone = CharacterClass::where('milestone_level', '<=', $level)
+            ->max('milestone_level') ?? 1;
+
+        $classes = CharacterClass::where('milestone_level', $milestone)
+            ->orderBy('id')
+            ->get();
+
+        if ($classes->isEmpty()) {
+            return CharacterClass::find('normal');
+        }
+
+        return $classes[random_int(0, $classes->count() - 1)];
+    }
+
+    private function nextBossClassForLevel(int $level): ?CharacterClass
+    {
+        $baseClass = $this->randomClassForLevel($level);
+        if (! $baseClass) {
+            return CharacterClass::find('normal');
+        }
+
+        $nextClassIds = ClassEvolution::where('from_class_id', $baseClass->id)
+            ->orderBy('choice_order')
+            ->pluck('to_class_id')
+            ->all();
+
+        if ($nextClassIds === []) {
+            return $baseClass;
+        }
+
+        return CharacterClass::find($nextClassIds[random_int(0, count($nextClassIds) - 1)]) ?? $baseClass;
     }
 
     private function addExp(Player $player, int $expGained): array

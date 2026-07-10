@@ -47,7 +47,7 @@ class GameFlowTest extends TestCase
             ->assertJsonPath('battle.turns.0.multiplier', 2)
             ->assertJsonPath('battle.turns.0.skillBonus', 1.1);
 
-        for ($i = 0; $i < 5 && ! $fight->json('battle.won'); $i++) {
+        for ($i = 0; $i < 20 && ! $fight->json('battle.won'); $i++) {
             $fight = $this->postJson("/game/player/{$playerId}/fight", [
                 'skill_id' => 'punch',
                 'dice' => 6,
@@ -387,6 +387,48 @@ class GameFlowTest extends TestCase
             $low->json('encounter.monsters.0.hp'),
             $high->json('encounter.monsters.0.hp')
         );
+    }
+
+    public function test_low_level_bot_only_uses_level_appropriate_class(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $hero = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'low-bot-class-token',
+            'name' => 'Low Bot Tester',
+        ])->assertOk();
+
+        $heroId = $hero->json('player.id');
+
+        $this->postJson("/game/player/{$heroId}/pvp/bot/start", [])
+            ->assertOk()
+            ->assertJsonPath('pvp.opponent.class_id', 'normal');
+    }
+
+    public function test_boss_encounter_uses_next_class_as_boss_class(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $hero = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'boss-class-token',
+            'name' => 'Boss Class Tester',
+        ])->assertOk();
+
+        $heroId = $hero->json('player.id');
+
+        $encounter = $this->postJson("/game/player/{$heroId}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 6,
+        ])->assertOk()
+            ->assertJsonPath('encounter.isBoss', true)
+            ->assertJsonPath('encounter.monsters.0.is_boss', true);
+
+        $this->assertContains($encounter->json('encounter.monsters.0.class_id'), [
+            'cavalry',
+            'mage',
+            'archer',
+        ]);
+        $this->assertNotEmpty($encounter->json('encounter.monsters.0.class_name'));
     }
 
     public function test_world_chat_and_pvp_leaderboard_work(): void

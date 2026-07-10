@@ -28,10 +28,15 @@ const state = {
     pvpResolved: false,
     worldTimer: null,
     worldPlayerX: Number(localStorage.getItem('dragon-path-world-x') || 0.38),
+    worldPlayerY: Number(localStorage.getItem('dragon-path-world-y') || 0.52),
+    walking: false,
 };
 
 if (Number.isNaN(state.worldPlayerX)) {
     state.worldPlayerX = 0.38;
+}
+if (Number.isNaN(state.worldPlayerY)) {
+    state.worldPlayerY = 0.52;
 }
 
 const els = {
@@ -91,6 +96,7 @@ const els = {
     pvpOpponentHpText: document.getElementById('pvp-opponent-hp-text'),
     pvpFightButton: document.getElementById('pvp-fight-button'),
     botPvpButton: document.getElementById('bot-pvp-button'),
+    mapMoveButtons: document.querySelectorAll('.map-move'),
     leaderboardList: document.getElementById('leaderboard-list'),
     botLeaderboardList: document.getElementById('bot-leaderboard-list'),
     chatList: document.getElementById('chat-list'),
@@ -498,6 +504,15 @@ BattleScene.prototype.createSceneLayers = function createSceneLayers() {
         this.trees.push(this.add.rectangle(x, 388, 18, 72, 0x6b3f1d));
         this.trees.push(this.add.triangle(x, 326, 0, 78, 50, 0, 100, 78, 0x166534));
     }
+    this.mapTiles = [];
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 6; col++) {
+            const isPath = row === 2 || col === 2;
+            const tile = this.add.rectangle(0, 0, 58, 42, isPath ? 0xd9b56d : 0x3fbf5a, isPath ? 0.78 : 0.46)
+                .setStrokeStyle(2, 0xffffff, 0.14);
+            this.mapTiles.push({ tile, row, col });
+        }
+    }
     this.ground = this.add.rectangle(400, 380, 800, 150, 0x2f8f46).setAlpha(0.98);
     this.path = this.add.ellipse(410, 426, 620, 100, 0xcfa968, 0.7);
     this.dungeonGlow = this.add.rectangle(400, 250, 800, 500, 0x090a12, 0).setBlendMode(Phaser.BlendModes.MULTIPLY);
@@ -585,6 +600,7 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.mountainFront.setFillStyle(isWorld ? 0x3f6f8f : 0x181f32, isWorld ? 0.88 : 0);
     this.clouds.forEach((cloud) => cloud.setVisible(isWorld));
     this.trees.forEach((tree) => tree.setVisible(isWorld));
+    this.mapTiles.forEach(({ tile }) => tile.setVisible(isWorld));
     this.dungeonGlow.setAlpha(isWorld || isPvp ? 0 : 0.48);
     this.torches.forEach((torch) => torch.setAlpha(!isWorld && !isPvp ? 0.75 : 0));
     this.colosseum.skyGlow.setAlpha(isPvp ? 0.42 : 0);
@@ -610,7 +626,9 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     const groundY = height * 0.68;
     const playerX = width * (this.currentMode === 'world' ? state.worldPlayerX : 0.38);
     const monsterX = width * 0.62;
-    const actorY = groundY - 72;
+    const actorY = this.currentMode === 'world'
+        ? Phaser.Math.Linear(groundY - 150, groundY - 20, state.worldPlayerY)
+        : groundY - 72;
 
     this.bg.setPosition(width / 2, height / 2).setSize(width, height);
     this.ground.setPosition(width / 2, groundY + 90).setSize(width, Math.max(230, height * 0.34));
@@ -623,6 +641,10 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
         const pair = Math.floor(index / 2);
         const x = ((pair * 160) % (width + 220)) - 80;
         tree.setPosition(x, index % 2 === 0 ? groundY + 28 : groundY - 24);
+    });
+    this.mapTiles.forEach(({ tile, row, col }) => {
+        tile.setPosition(width * 0.33 + col * 64, groundY - 166 + row * 48);
+        tile.setSize(Math.max(44, width * 0.035), 38);
     });
     this.path.setPosition(width / 2, groundY + 68).setSize(width * 0.46, Math.max(82, height * 0.11));
     this.dungeonGlow.setPosition(width / 2, height / 2).setSize(width, height);
@@ -654,12 +676,22 @@ BattleScene.prototype.setPlayerName = function setPlayerName(name) {
     this.playerNameTag?.setText(name || 'Adventurer');
 };
 
-BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(direction) {
+BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(dx, dy = 0) {
     if (this.currentMode !== 'world') return;
 
-    state.worldPlayerX = Math.max(0.24, Math.min(0.76, state.worldPlayerX + (direction * 0.045)));
+    state.worldPlayerX = Math.max(0.24, Math.min(0.76, state.worldPlayerX + (dx * 0.055)));
+    state.worldPlayerY = Math.max(0.12, Math.min(0.95, state.worldPlayerY + (dy * 0.16)));
     localStorage.setItem('dragon-path-world-x', String(state.worldPlayerX));
+    localStorage.setItem('dragon-path-world-y', String(state.worldPlayerY));
     this.resizeScene({ width: this.scale.width, height: this.scale.height });
+    this.tweens.add({
+        targets: [this.player, this.playerShadow, this.playerNameTag],
+        scaleX: '+=0.04',
+        scaleY: '+=0.04',
+        duration: 120,
+        yoyo: true,
+        ease: 'Sine.easeOut',
+    });
 };
 
 BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = []) {
@@ -1377,6 +1409,31 @@ async function rollEncounter() {
     }
 }
 
+async function walkWorld(dx, dy) {
+    await ensurePayload();
+
+    if (state.walking || state.mode !== 'world') {
+        return;
+    }
+
+    state.walking = true;
+    try {
+        playSfx('click');
+        state.scene?.moveWorldPlayer(dx, dy);
+
+        if (Math.random() < 0.28) {
+            log('เดินสำรวจแล้วเจอมอนสเตอร์!');
+            await rollEncounter();
+        } else {
+            log('เดินสำรวจแผนที่... ยังปลอดภัย');
+        }
+    } catch (error) {
+        log(error.message);
+    } finally {
+        state.walking = false;
+    }
+}
+
 function resetBattleReadout() {
     state.lastDamage = null;
     state.lastDice = null;
@@ -1540,6 +1597,18 @@ els.botPvpButton?.addEventListener('click', () => {
     playSfx('click');
     startBotPvp();
 });
+els.mapMoveButtons?.forEach((button) => {
+    button.addEventListener('click', () => {
+        const move = button.dataset.move;
+        const vector = {
+            up: [0, -1],
+            down: [0, 1],
+            left: [-1, 0],
+            right: [1, 0],
+        }[move] || [0, 0];
+        walkWorld(vector[0], vector[1]);
+    });
+});
 els.pvpFightButton?.addEventListener('click', fightPvp);
 els.chatSendButton?.addEventListener('click', sendChat);
 els.chatInput?.addEventListener('keydown', (event) => {
@@ -1552,9 +1621,15 @@ document.addEventListener('keydown', (event) => {
         return;
     }
 
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault();
-        state.scene?.moveWorldPlayer(event.key === 'ArrowLeft' ? -1 : 1);
+        const vector = {
+            ArrowLeft: [-1, 0],
+            ArrowRight: [1, 0],
+            ArrowUp: [0, -1],
+            ArrowDown: [0, 1],
+        }[event.key];
+        walkWorld(vector[0], vector[1]);
     }
 });
 els.soundToggleButton?.addEventListener('click', () => setSfxEnabled(!audio.sfxEnabled));

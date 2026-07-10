@@ -123,6 +123,12 @@
                             <em id="encounter-count-effect">-</em>
                         </div>
                     </div>
+                    <div class="map-controls" aria-label="เดินบนแผนที่">
+                        <button class="map-move" data-move="up" type="button">↑</button>
+                        <button class="map-move" data-move="left" type="button">←</button>
+                        <button class="map-move" data-move="down" type="button">↓</button>
+                        <button class="map-move" data-move="right" type="button">→</button>
+                    </div>
                     <button id="roll-encounter-button" class="primary-action" type="button" onclick="window.rollEncounterAction?.()">สำรวจแผนที่</button>
                 </div>
 

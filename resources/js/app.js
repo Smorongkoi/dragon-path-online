@@ -1210,21 +1210,46 @@ new Phaser.Game({
     scene: BattleScene,
 });
 
+function csrfRequestOptions(options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'application/json',
+        ...(options.headers || {}),
+    };
+    const normalized = {
+        credentials: 'same-origin',
+        ...options,
+        headers,
+    };
+    const method = String(normalized.method || 'GET').toUpperCase();
+    const contentType = String(headers['Content-Type'] || headers['content-type'] || '');
+
+    if (method !== 'GET' && typeof normalized.body === 'string' && contentType.includes('application/json')) {
+        try {
+            const payload = JSON.parse(normalized.body || '{}');
+            if (payload && typeof payload === 'object' && !Array.isArray(payload) && !payload._token) {
+                normalized.body = JSON.stringify({ _token: csrfToken, ...payload });
+            }
+        } catch {
+            // Keep the original body if a caller sends custom JSON text.
+        }
+    }
+
+    return normalized;
+}
+
 async function request(url, options = {}) {
     els.saveStatus.textContent = 'Saving';
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            Accept: 'application/json',
-            ...(options.headers || {}),
-        },
-    });
+    const response = await fetch(url, csrfRequestOptions(options));
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         els.saveStatus.textContent = response.status === 401 ? 'Login required' : 'Error';
+        if (response.status === 419) {
+            throw new Error('Session หมดอายุหรือ CSRF ไม่ตรง กรุณา refresh หน้าเกมแล้วลองใหม่');
+        }
         throw new Error(data.message || 'Request failed');
     }
 

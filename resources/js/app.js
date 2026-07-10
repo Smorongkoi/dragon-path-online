@@ -2,6 +2,7 @@ import './bootstrap';
 import Phaser from 'phaser';
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+const isAuthenticated = document.body.dataset.authenticated === 'true';
 const tokenKey = 'dragon-path-player-token';
 const browserToken = localStorage.getItem(tokenKey) || crypto.randomUUID();
 localStorage.setItem(tokenKey, browserToken);
@@ -2394,4 +2395,8 @@ setBgmEnabled(audio.bgmEnabled);
 updateMenuToggleLabel();
 window.rollEncounterAction = rollEncounter;
 window.fightAction = fight;
-bootstrap().catch((error) => log(error.message));
+if (isAuthenticated) {
+    bootstrap().catch((error) => log(error.message));
+} else if (els.saveStatus) {
+    els.saveStatus.textContent = 'Login required';
+}

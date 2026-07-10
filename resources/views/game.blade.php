@@ -7,7 +7,7 @@
     <title>Dragon Path Online 0.1</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
+<body class="@guest guest @else authenticated @endguest" data-authenticated="@auth true @else false @endauth">
     @guest
         <section class="login-gate">
             <div class="login-card">

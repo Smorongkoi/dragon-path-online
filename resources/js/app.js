@@ -384,8 +384,9 @@ class BattleScene extends Phaser.Scene {
         return '';
     }
 
-    showSpeech(message, side = 'player') {
-        const target = side === 'player' ? this.player : this.monster;
+    showSpeech(message, side = 'player', playerId = null) {
+        const onlineActor = playerId ? this.onlineActors?.get(String(playerId)) : null;
+        const target = onlineActor?.sprite || (side === 'player' ? this.player : this.monster);
         const bubble = this.add.text(target.x, target.y - 132, message, {
             fontFamily: 'Arial',
             fontSize: '17px',
@@ -393,7 +394,7 @@ class BattleScene extends Phaser.Scene {
             backgroundColor: '#ffffff',
             padding: { left: 12, right: 12, top: 8, bottom: 8 },
             wordWrap: { width: 260 },
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(40);
 
         this.tweens.add({
             targets: bubble,
@@ -1060,7 +1061,7 @@ function rememberWorldState(world, notify = true) {
         if (state.seenChatIds.has(message.id)) return;
         if (notify) {
             const isSelf = message.player_id === state.payload?.player?.id;
-            state.scene?.showSpeech(message.message, isSelf ? 'player' : 'monster');
+            state.scene?.showSpeech(`${message.player_name}: ${message.message}`, isSelf ? 'player' : 'monster', message.player_id);
         }
         state.seenChatIds.add(message.id);
     });
@@ -1406,6 +1407,12 @@ function log(message) {
     }
 }
 
+function updateMenuToggleLabel() {
+    const hidden = document.body.classList.contains('menu-hidden');
+    els.toggleMenuButton.textContent = hidden ? 'คำสั่ง: แสดง' : 'คำสั่ง: ซ่อน';
+    els.toggleMenuButton.classList.toggle('selected', hidden);
+}
+
 els.renameButton.addEventListener('click', rename);
 els.toggleStatusButton.addEventListener('click', () => {
     playSfx('click');
@@ -1414,6 +1421,7 @@ els.toggleStatusButton.addEventListener('click', () => {
 els.toggleMenuButton.addEventListener('click', () => {
     playSfx('click');
     document.body.classList.toggle('menu-hidden');
+    updateMenuToggleLabel();
 });
 els.monsterModeButton?.addEventListener('click', () => {
     playSfx('click');
@@ -1445,6 +1453,7 @@ els.bgmToggleButton?.addEventListener('click', () => setBgmEnabled(!audio.bgmEna
 document.addEventListener('pointerdown', ensureAudio, { once: true });
 setSfxEnabled(audio.sfxEnabled);
 setBgmEnabled(audio.bgmEnabled);
+updateMenuToggleLabel();
 window.rollEncounterAction = rollEncounter;
 window.fightAction = fight;
 bootstrap().catch((error) => log(error.message));

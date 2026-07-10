@@ -738,8 +738,7 @@ body.status-hidden .command-panel {
     top: 106px;
 }
 
-body.menu-hidden .command-panel,
-body.menu-hidden .lower-layout {
+body.menu-hidden .command-panel {
     display: none;
 }
 
@@ -1053,6 +1052,13 @@ button.selected {
 
 body.menu-hidden .command-panel {
     display: none;
+}
+
+body.menu-hidden #toggle-menu-button {
+    border-color: #facc15;
+    background: linear-gradient(180deg, #8a4f22, #4a2418);
+    color: #fff7ed;
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.22), 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 @media (max-width: 1120px) {

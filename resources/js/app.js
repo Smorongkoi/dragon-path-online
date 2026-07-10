@@ -623,7 +623,7 @@ BattleScene.prototype.createSceneLayers = function createSceneLayers() {
             this.mapTiles.push({ tile, row, col });
         }
     }
-    this.ground = this.add.rectangle(400, 380, 800, 150, 0x2f8f46).setAlpha(0.98);
+    this.ground = this.add.rectangle(400, 380, 800, 150, 0x2f8f46).setAlpha(0.98).setDepth(0);
     this.path = this.add.ellipse(410, 426, 620, 100, 0xcfa968, 0.7);
     this.dungeonGlow = this.add.rectangle(400, 250, 800, 500, 0x090a12, 0).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.torches = [
@@ -666,10 +666,10 @@ BattleScene.prototype.create = function createGameScene() {
     this.createMonsterTexture('monster_wyvern', 0xe76f51, 0x4a1f18, 'wyvern');
     this.createMonsterTexture('monster_default', 0xff6464, 0x2f1515, 'slime');
     this.createSceneLayers();
-    this.playerShadow = this.add.ellipse(230, 374, 128, 26, 0x000000, 0.22);
-    this.monsterShadow = this.add.ellipse(570, 374, 142, 28, 0x000000, 0.26);
-    this.player = this.add.sprite(230, 310, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.76 : 2.1);
-    this.monster = this.add.sprite(570, 300, 'monster_default').setScale(this.textures.exists('monsterSheet') ? 0.82 : 2.25);
+    this.playerShadow = this.add.ellipse(230, 374, 128, 26, 0x000000, 0.22).setDepth(18);
+    this.monsterShadow = this.add.ellipse(570, 374, 142, 28, 0x000000, 0.26).setDepth(18);
+    this.player = this.add.sprite(230, 310, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.76 : 2.1).setDepth(22);
+    this.monster = this.add.sprite(570, 300, 'monster_default').setScale(this.textures.exists('monsterSheet') ? 0.82 : 2.25).setDepth(22);
     this.playerNameTag = this.add.text(230, 190, 'You', {
         fontFamily: gameFontFamily,
         fontSize: '16px',
@@ -677,7 +677,7 @@ BattleScene.prototype.create = function createGameScene() {
         color: '#ffffff',
         stroke: '#0f172a',
         strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(20);
+    }).setOrigin(0.5).setDepth(30);
     this.monsterName = this.add.text(500, 385, 'Monster', {
         fontFamily: gameFontFamily,
         fontSize: '18px',
@@ -685,14 +685,13 @@ BattleScene.prototype.create = function createGameScene() {
         color: '#ffffff',
         stroke: '#111827',
         strokeThickness: 4,
-    }).setOrigin(0.5).setPadding(10, 5, 10, 5).setBackgroundColor('rgba(8, 13, 23, 0.72)');
+    }).setOrigin(0.5).setPadding(10, 5, 10, 5).setBackgroundColor('rgba(8, 13, 23, 0.72)').setDepth(30);
     this.monster.setVisible(false);
     this.monsterShadow.setVisible(false);
     this.monsterName.setVisible(false);
     this.onlineActors = new Map();
     this.tweens.add({ targets: this.player, y: '+=8', duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: this.monster, y: '+=10', duration: 920, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.tweens.add({ targets: this.clouds, x: '+=28', duration: 9000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.scale.on('resize', this.resizeScene, this);
     this.resizeScene({ width: this.scale.width, height: this.scale.height });
     this.setMode('world');
@@ -705,12 +704,12 @@ BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     this.bg.setFillStyle(isWorld ? 0x7dd3fc : (isPvp ? 0x26435f : 0x101827));
     this.ground.setFillStyle(isWorld ? 0x2f8f46 : (isPvp ? 0xb9853b : 0x20212d)).setAlpha(isWorld ? 0.98 : 0.96);
     this.sun.setFillStyle(isWorld ? 0xffd166 : (isPvp ? 0xffc66d : 0x6d597a), isWorld || isPvp ? 0.72 : 0.28);
-    this.path.setVisible(isWorld);
-    this.mountainBack.setFillStyle(isWorld ? 0x5b8fb9 : 0x252a40, isWorld ? 0.78 : 0);
-    this.mountainFront.setFillStyle(isWorld ? 0x3f6f8f : 0x181f32, isWorld ? 0.88 : 0);
-    this.clouds.forEach((cloud) => cloud.setVisible(isWorld));
-    this.trees.forEach((tree) => tree.setVisible(isWorld));
-    this.mapTiles.forEach(({ tile }) => tile.setVisible(isWorld));
+    this.path.setVisible(false);
+    this.mountainBack.setVisible(false);
+    this.mountainFront.setVisible(false);
+    this.clouds.forEach((cloud) => cloud.setVisible(false));
+    this.trees.forEach((tree) => tree.setVisible(false));
+    this.mapTiles.forEach(({ tile }) => tile.setVisible(false));
     this.worldTiles?.forEach((tile) => tile.setAlpha(isWorld ? 0.92 : 0));
     this.dungeonTiles?.forEach((tile) => tile.setAlpha(!isWorld && !isPvp ? 0.9 : 0));
     this.pvpTiles?.forEach((tile) => tile.setAlpha(isPvp ? 0.88 : 0));
@@ -905,8 +904,8 @@ BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = [])
     players.forEach((player) => {
         const id = String(player.id);
         if (!this.onlineActors.has(id)) {
-            const sprite = this.add.sprite(0, 0, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.52 : 1.55).setDepth(12);
-            const shadow = this.add.ellipse(0, 0, 88, 20, 0x000000, 0.18).setDepth(10);
+            const sprite = this.add.sprite(0, 0, 'playerTex').setScale(this.textures.exists('playerSheet') ? 0.52 : 1.55).setDepth(22);
+            const shadow = this.add.ellipse(0, 0, 88, 20, 0x000000, 0.18).setDepth(18);
             const nameTag = this.add.text(0, 0, player.name, {
                 fontFamily: gameFontFamily,
                 fontSize: '14px',
@@ -914,7 +913,7 @@ BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = [])
                 color: '#e0f2fe',
                 stroke: '#0f172a',
                 strokeThickness: 4,
-            }).setOrigin(0.5).setDepth(20);
+            }).setOrigin(0.5).setDepth(30);
 
             this.applyOnlinePlayerTexture(sprite, player);
             sprite.setTint(this.onlinePlayerTint(player));

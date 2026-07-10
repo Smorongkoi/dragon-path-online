@@ -467,17 +467,92 @@ BattleScene.prototype.preload = function preloadPixelArtAssets() {
     this.load.image('uiSheet', `${assetBasePath}/fantasy-ui-pack.png`);
 };
 
-BattleScene.prototype.createCroppedTexture = function createCroppedTexture(key, sheetKey, x, y, width, height) {
+BattleScene.prototype.createCroppedTexture = function createCroppedTexture(key, sheetKey, x, y, width, height, trimSprite = false) {
     if (this.textures.exists(key) || !this.textures.exists(sheetKey)) {
         return;
     }
 
     const source = this.textures.get(sheetKey).getSourceImage();
-    const texture = this.textures.createCanvas(key, Math.ceil(width), Math.ceil(height));
+    const cropWidth = Math.ceil(width);
+    const cropHeight = Math.ceil(height);
+    const scratch = document.createElement('canvas');
+    scratch.width = cropWidth;
+    scratch.height = cropHeight;
+    const scratchContext = scratch.getContext('2d', { willReadFrequently: trimSprite });
+    scratchContext.clearRect(0, 0, cropWidth, cropHeight);
+    scratchContext.drawImage(source, x, y, width, height, 0, 0, cropWidth, cropHeight);
+
+    const bounds = trimSprite ? this.findPrimaryAlphaBounds(scratchContext, cropWidth, cropHeight) : null;
+    const outputWidth = bounds ? bounds.width : cropWidth;
+    const outputHeight = bounds ? bounds.height : cropHeight;
+    const texture = this.textures.createCanvas(key, outputWidth, outputHeight);
     const context = texture.getContext();
-    context.clearRect(0, 0, width, height);
-    context.drawImage(source, x, y, width, height, 0, 0, width, height);
+    context.clearRect(0, 0, outputWidth, outputHeight);
+    if (bounds) {
+        context.drawImage(scratch, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, outputWidth, outputHeight);
+    } else {
+        context.drawImage(scratch, 0, 0);
+    }
     texture.refresh();
+};
+
+BattleScene.prototype.findPrimaryAlphaBounds = function findPrimaryAlphaBounds(context, width, height) {
+    const { data } = context.getImageData(0, 0, width, height);
+    const visited = new Uint8Array(width * height);
+    let best = null;
+
+    const hasAlpha = (index) => data[(index * 4) + 3] > 18;
+
+    for (let start = 0; start < visited.length; start++) {
+        if (visited[start] || !hasAlpha(start)) continue;
+
+        let count = 0;
+        let minX = width;
+        let minY = height;
+        let maxX = 0;
+        let maxY = 0;
+        const stack = [start];
+        visited[start] = 1;
+
+        while (stack.length > 0) {
+            const index = stack.pop();
+            const px = index % width;
+            const py = Math.floor(index / width);
+            count += 1;
+            minX = Math.min(minX, px);
+            minY = Math.min(minY, py);
+            maxX = Math.max(maxX, px);
+            maxY = Math.max(maxY, py);
+
+            const neighbors = [index - 1, index + 1, index - width, index + width];
+            neighbors.forEach((next) => {
+                if (next < 0 || next >= visited.length || visited[next] || !hasAlpha(next)) return;
+                const nx = next % width;
+                if (Math.abs(nx - px) > 1) return;
+                visited[next] = 1;
+                stack.push(next);
+            });
+        }
+
+        if (!best || count > best.count) {
+            best = { count, minX, minY, maxX, maxY };
+        }
+    }
+
+    if (!best || best.count < 24) return null;
+
+    const padding = 4;
+    const x = Math.max(0, best.minX - padding);
+    const y = Math.max(0, best.minY - padding);
+    const maxX = Math.min(width - 1, best.maxX + padding);
+    const maxY = Math.min(height - 1, best.maxY + padding);
+
+    return {
+        x,
+        y,
+        width: maxX - x + 1,
+        height: maxY - y + 1,
+    };
 };
 
 BattleScene.prototype.createTileTextures = function createTileTextures() {
@@ -508,10 +583,10 @@ BattleScene.prototype.createPlayerTexture = function createPlayerTexture() {
     if (this.textures.exists('playerSheet')) {
         for (let row = 0; row < 4; row++) {
             for (let frame = 0; frame < 4; frame++) {
-                this.createCroppedTexture(`player_class_${row}_${frame}`, 'playerSheet', frame * 384, row * 256, 384, 256);
+                this.createCroppedTexture(`player_class_${row}_${frame}`, 'playerSheet', frame * 384, row * 256, 384, 256, true);
             }
         }
-        this.createCroppedTexture('playerTex', 'playerSheet', 0, 0, 384, 256);
+        this.createCroppedTexture('playerTex', 'playerSheet', 0, 0, 384, 256, true);
         return;
     }
 
@@ -549,9 +624,9 @@ BattleScene.prototype.createMonsterTexture = function createMonsterTexture(key, 
         const frameHeight = 1024 / 6;
 
         for (let stage = 0; stage < 4; stage++) {
-            this.createCroppedTexture(`monster_${type}_${stage}`, 'monsterSheet', stage * frameWidth, row * frameHeight, frameWidth, frameHeight);
+            this.createCroppedTexture(`monster_${type}_${stage}`, 'monsterSheet', stage * frameWidth, row * frameHeight, frameWidth, frameHeight, true);
         }
-        this.createCroppedTexture(key, 'monsterSheet', 0, row * frameHeight, frameWidth, frameHeight);
+        this.createCroppedTexture(key, 'monsterSheet', 0, row * frameHeight, frameWidth, frameHeight, true);
         return;
     }
 
@@ -838,7 +913,7 @@ BattleScene.prototype.setPlayerClass = function setPlayerClass(classId = 'normal
     const row = playerClassRows[classId] ?? 0;
     const textureKey = `player_class_${row}_0`;
     if (this.textures.exists(textureKey)) {
-        this.player.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76);
+        this.player.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76).setFlipX(false);
     }
 };
 
@@ -860,6 +935,7 @@ BattleScene.prototype.setMonster = function setPixelMonster(monster) {
     }
 
     this.monster.clearTint();
+    this.monster.setFlipX(true);
     this.monster.setAlpha(1).setAngle(0).setScale(this.textures.exists('monsterSheet') ? (monster.is_boss ? 1.05 : 0.88) : 2.4);
     this.monsterName.setText(`${element.fullLabel} ${monster.name} LV ${monster.level}`);
     this.monsterName.setColor(element.color);
@@ -874,10 +950,11 @@ BattleScene.prototype.setOpponent = function setOpponent(opponent) {
     const element = elementMeta[opponent.element || 'neutral'] || elementMeta.neutral;
 
     if (this.textures.exists(textureKey)) {
-        this.monster.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76);
+        this.monster.setTexture(textureKey).setScale(row === 1 ? 0.72 : 0.76).setFlipX(true);
     }
 
     this.monster.clearTint();
+    this.monster.setFlipX(true);
     if (opponent.bot) {
         this.monster.setTint(0xfbbf24);
     }

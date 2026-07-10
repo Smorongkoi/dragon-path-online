@@ -482,6 +482,9 @@ input {
 
 [data-mode="pvp"] .command-panel {
     width: min(860px, calc(100vw - 420px));
+    background: rgba(35, 21, 13, 0.86);
+    border-color: rgba(250, 204, 21, 0.42);
+    box-shadow: 0 18px 42px rgba(48, 22, 7, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 [data-mode="pvp"] .command-panel .pvp-panel {
@@ -490,11 +493,35 @@ input {
     gap: 12px;
 }
 
+[data-mode="pvp"] .command-panel .stat-card {
+    min-width: 240px;
+    border-color: rgba(250, 204, 21, 0.48);
+    background: linear-gradient(180deg, rgba(83, 45, 22, 0.92), rgba(25, 18, 18, 0.94));
+}
+
 [data-mode="pvp"] #arena-player-list {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     max-width: 420px;
+}
+
+[data-mode="pvp"] #arena-player-list button {
+    min-height: 48px;
+    border-color: rgba(250, 204, 21, 0.36);
+    background: linear-gradient(180deg, rgba(92, 54, 28, 0.92), rgba(30, 20, 20, 0.94));
+}
+
+[data-mode="pvp"] #arena-player-list button.selected,
+[data-mode="pvp"] #arena-player-list button:hover {
+    border-color: #facc15;
+    background: linear-gradient(180deg, #8a4f22, #4a2418);
+}
+
+[data-mode="pvp"] #pvp-fight-button {
+    background: linear-gradient(180deg, #dc2626, #7f1d1d);
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.16), 0 14px 28px rgba(127, 29, 29, 0.28);
 }
 
 [data-mode="battle"] .command-panel .damage-card {
@@ -954,6 +981,30 @@ button.selected {
 
 [data-mode="pvp"] #arena-player-list {
     max-width: 520px;
+}
+
+[data-mode="pvp"] .command-panel {
+    background: rgba(35, 21, 13, 0.86);
+    border-color: rgba(250, 204, 21, 0.42);
+    min-height: 112px;
+}
+
+[data-mode="pvp"] .command-panel #pvp-fight-button {
+    background: linear-gradient(180deg, #dc2626, #7f1d1d);
+    border-color: #fca5a5;
+}
+
+[data-mode="pvp"] .command-panel .world-panel,
+[data-mode="pvp"] .command-panel .battle-panel {
+    display: none;
+}
+
+[data-mode="pvp"] .command-panel .pvp-panel {
+    display: flex;
+}
+
+[data-mode="pvp"] .command-panel .stat-card {
+    min-width: 250px;
 }
 
 .lower-layout {

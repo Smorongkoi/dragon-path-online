@@ -33,6 +33,7 @@ const els = {
     toggleStatusButton: document.getElementById('toggle-status-button'),
     toggleMenuButton: document.getElementById('toggle-menu-button'),
     soundToggleButton: document.getElementById('sound-toggle-button'),
+    bgmToggleButton: document.getElementById('bgm-toggle-button'),
     modeRoot: document.getElementById('mode-root'),
     playerName: document.getElementById('player-name'),
     renameButton: document.getElementById('rename-button'),
@@ -100,13 +101,12 @@ const elementMeta = {
 
 const audio = {
     ctx: null,
-    enabled: localStorage.getItem('dragon-path-audio') !== 'off',
+    sfxEnabled: localStorage.getItem('dragon-path-sfx') !== 'off' && localStorage.getItem('dragon-path-audio') !== 'off',
+    bgmEnabled: localStorage.getItem('dragon-path-bgm') !== 'off' && localStorage.getItem('dragon-path-audio') !== 'off',
     bgmNodes: [],
 };
 
 function ensureAudio() {
-    if (!audio.enabled) return;
-
     if (!audio.ctx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return;
@@ -117,7 +117,7 @@ function ensureAudio() {
         audio.ctx.resume();
     }
 
-    if (audio.bgmNodes.length === 0) {
+    if (audio.bgmEnabled && audio.bgmNodes.length === 0) {
         startBgm();
     }
 }
@@ -159,12 +159,21 @@ function stopBgm() {
     audio.bgmNodes = [];
 }
 
-function setSoundEnabled(enabled) {
-    audio.enabled = enabled;
-    localStorage.setItem('dragon-path-audio', enabled ? 'on' : 'off');
+function setSfxEnabled(enabled) {
+    audio.sfxEnabled = enabled;
+    localStorage.setItem('dragon-path-sfx', enabled ? 'on' : 'off');
     if (els.soundToggleButton) {
-        els.soundToggleButton.textContent = enabled ? 'เสียง: เปิด' : 'เสียง: ปิด';
+        els.soundToggleButton.textContent = enabled ? 'เอฟเฟกต์: เปิด' : 'เอฟเฟกต์: ปิด';
         els.soundToggleButton.classList.toggle('selected', enabled);
+    }
+}
+
+function setBgmEnabled(enabled) {
+    audio.bgmEnabled = enabled;
+    localStorage.setItem('dragon-path-bgm', enabled ? 'on' : 'off');
+    if (els.bgmToggleButton) {
+        els.bgmToggleButton.textContent = enabled ? 'เพลง: เปิด' : 'เพลง: ปิด';
+        els.bgmToggleButton.classList.toggle('selected', enabled);
     }
     if (enabled) {
         ensureAudio();
@@ -174,7 +183,7 @@ function setSoundEnabled(enabled) {
 }
 
 function playSfx(type = 'click') {
-    if (!audio.enabled) return;
+    if (!audio.sfxEnabled) return;
     ensureAudio();
     if (!audio.ctx) return;
 
@@ -486,6 +495,21 @@ BattleScene.prototype.createSceneLayers = function createSceneLayers() {
         this.add.circle(120, 260, 18, 0xffa02b, 0),
         this.add.circle(680, 260, 18, 0xffa02b, 0),
     ];
+    this.colosseum = {
+        skyGlow: this.add.ellipse(400, 148, 780, 180, 0xffdf9a, 0),
+        rearWall: this.add.rectangle(400, 262, 820, 180, 0xc8a46b, 0),
+        upperTier: this.add.rectangle(400, 196, 860, 62, 0x9b6b3e, 0),
+        arenaSand: this.add.ellipse(400, 410, 700, 150, 0xd6ad63, 0),
+        flags: [],
+        arches: [],
+    };
+    for (let i = 0; i < 14; i++) {
+        this.colosseum.arches.push(this.add.ellipse(70 + i * 62, 262, 34, 86, 0x6d4b32, 0));
+        this.colosseum.arches.push(this.add.rectangle(70 + i * 62, 218, 34, 12, 0xf0d08f, 0));
+    }
+    for (let i = 0; i < 8; i++) {
+        this.colosseum.flags.push(this.add.triangle(130 + i * 92, 144, 0, 0, 34, 10, 0, 20, i % 2 ? 0xdc2626 : 0xfacc15, 0));
+    }
     this.titleText = this.add.text(28, 94, 'แผนที่โลก', {
         fontFamily: 'Arial',
         fontSize: '22px',
@@ -532,17 +556,24 @@ BattleScene.prototype.create = function createGameScene() {
 
 BattleScene.prototype.setMode = function setGameSceneMode(mode) {
     const isWorld = mode === 'world';
-    this.bg.setFillStyle(isWorld ? 0x7dd3fc : 0x101827);
-    this.ground.setFillStyle(isWorld ? 0x2f8f46 : 0x20212d).setAlpha(isWorld ? 0.98 : 0.96);
-    this.sun.setFillStyle(isWorld ? 0xffd166 : 0x6d597a, isWorld ? 0.72 : 0.28);
+    const isPvp = mode === 'pvp';
+    this.bg.setFillStyle(isWorld ? 0x7dd3fc : (isPvp ? 0x26435f : 0x101827));
+    this.ground.setFillStyle(isWorld ? 0x2f8f46 : (isPvp ? 0xb9853b : 0x20212d)).setAlpha(isWorld ? 0.98 : 0.96);
+    this.sun.setFillStyle(isWorld ? 0xffd166 : (isPvp ? 0xffc66d : 0x6d597a), isWorld || isPvp ? 0.72 : 0.28);
     this.path.setVisible(isWorld);
-    this.mountainBack.setFillStyle(isWorld ? 0x5b8fb9 : 0x252a40, isWorld ? 0.78 : 0.55);
-    this.mountainFront.setFillStyle(isWorld ? 0x3f6f8f : 0x181f32, isWorld ? 0.88 : 0.75);
+    this.mountainBack.setFillStyle(isWorld ? 0x5b8fb9 : 0x252a40, isWorld ? 0.78 : 0);
+    this.mountainFront.setFillStyle(isWorld ? 0x3f6f8f : 0x181f32, isWorld ? 0.88 : 0);
     this.clouds.forEach((cloud) => cloud.setVisible(isWorld));
     this.trees.forEach((tree) => tree.setVisible(isWorld));
-    this.dungeonGlow.setAlpha(isWorld ? 0 : 0.48);
-    this.torches.forEach((torch) => torch.setAlpha(isWorld ? 0 : 0.75));
-    this.titleText.setText(isWorld ? 'แผนที่โลก' : 'ดันเจี้ยน');
+    this.dungeonGlow.setAlpha(isWorld || isPvp ? 0 : 0.48);
+    this.torches.forEach((torch) => torch.setAlpha(!isWorld && !isPvp ? 0.75 : 0));
+    this.colosseum.skyGlow.setAlpha(isPvp ? 0.42 : 0);
+    this.colosseum.rearWall.setAlpha(isPvp ? 0.94 : 0);
+    this.colosseum.upperTier.setAlpha(isPvp ? 0.92 : 0);
+    this.colosseum.arenaSand.setAlpha(isPvp ? 0.84 : 0);
+    this.colosseum.arches.forEach((arch) => arch.setAlpha(isPvp ? 0.92 : 0));
+    this.colosseum.flags.forEach((flag) => flag.setAlpha(isPvp ? 0.9 : 0));
+    this.titleText.setText(isWorld ? 'แผนที่โลก' : (isPvp ? 'ลานประลอง' : 'ดันเจี้ยน'));
     this.monster.setVisible(!isWorld);
     this.monsterShadow.setVisible(!isWorld);
     this.monsterName.setVisible(!isWorld);
@@ -573,6 +604,18 @@ BattleScene.prototype.resizeScene = function resizeGameScene(gameSize) {
     this.dungeonGlow.setPosition(width / 2, height / 2).setSize(width, height);
     this.torches[0].setPosition(width * 0.26, groundY - 84);
     this.torches[1].setPosition(width * 0.74, groundY - 84);
+    this.colosseum.skyGlow.setPosition(width / 2, height * 0.18).setSize(width * 0.78, height * 0.2);
+    this.colosseum.upperTier.setPosition(width / 2, height * 0.24).setSize(width * 0.78, 70);
+    this.colosseum.rearWall.setPosition(width / 2, height * 0.36).setSize(width * 0.86, Math.max(154, height * 0.2));
+    this.colosseum.arenaSand.setPosition(width / 2, groundY + 74).setSize(width * 0.55, Math.max(116, height * 0.16));
+    this.colosseum.arches.forEach((arch, index) => {
+        const pair = Math.floor(index / 2);
+        const x = width * 0.12 + pair * ((width * 0.76) / 13);
+        arch.setPosition(x, index % 2 === 0 ? height * 0.36 : height * 0.29);
+    });
+    this.colosseum.flags.forEach((flag, index) => {
+        flag.setPosition(width * 0.2 + index * ((width * 0.6) / 7), height * 0.18);
+    });
     this.titleText.setPosition(Math.max(350, width * 0.28), 172);
     this.playerShadow.setPosition(playerX, actorY + 88);
     this.monsterShadow.setPosition(monsterX, actorY + 88);
@@ -961,7 +1004,7 @@ function setMode(mode) {
     els.modeRoot.dataset.mode = mode;
     els.monsterModeButton?.classList.toggle('selected', mode !== 'pvp');
     els.arenaModeButton?.classList.toggle('selected', mode === 'pvp');
-    state.scene?.setMode(mode === 'pvp' ? 'battle' : mode);
+    state.scene?.setMode(mode);
     if (state.payload) {
         render();
     }
@@ -1290,9 +1333,11 @@ els.chatInput?.addEventListener('keydown', (event) => {
         sendChat();
     }
 });
-els.soundToggleButton?.addEventListener('click', () => setSoundEnabled(!audio.enabled));
+els.soundToggleButton?.addEventListener('click', () => setSfxEnabled(!audio.sfxEnabled));
+els.bgmToggleButton?.addEventListener('click', () => setBgmEnabled(!audio.bgmEnabled));
 document.addEventListener('pointerdown', ensureAudio, { once: true });
-setSoundEnabled(audio.enabled);
+setSfxEnabled(audio.sfxEnabled);
+setBgmEnabled(audio.bgmEnabled);
 window.rollEncounterAction = rollEncounter;
 window.fightAction = fight;
 bootstrap().catch((error) => log(error.message));

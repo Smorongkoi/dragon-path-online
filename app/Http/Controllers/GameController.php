@@ -732,10 +732,7 @@ class GameController extends Controller
             default => random_int(1, 2),
         };
 
-        $baseMonsters = Monster::orderByRaw('abs(level - ?)', [$targetLevel])
-            ->orderBy('level')
-            ->limit(4)
-            ->get();
+        $baseMonsters = $this->monsterFormsForLevel($targetLevel);
 
         if ($baseMonsters->isEmpty()) {
             $baseMonsters = Monster::limit(1)->get();
@@ -754,6 +751,8 @@ class GameController extends Controller
             $monster = [
                 'id' => "{$base->id}-{$i}",
                 'base_id' => $base->id,
+                'family_key' => $base->family_key,
+                'evolution_stage' => $base->evolution_stage,
                 'name' => $isBoss ? "Boss {$base->name}" : $base->name,
                 'level' => $targetLevel,
                 'hp' => $monsterHp,
@@ -965,6 +964,32 @@ class GameController extends Controller
         $normalHp = (int) floor(($base->hp * $levelScale) + $levelBonus);
 
         return max(20, (int) floor($normalHp * ($isBoss ? 2.4 : 1)));
+    }
+
+    private function monsterFormsForLevel(int $targetLevel)
+    {
+        $targetStage = intdiv(max(1, $targetLevel), 10);
+        $families = Monster::whereNotNull('family_key')
+            ->where('evolution_stage', 0)
+            ->orderByRaw('abs(level - ?)', [$targetLevel])
+            ->orderBy('level')
+            ->limit(4)
+            ->get();
+
+        if ($families->isEmpty()) {
+            return Monster::orderByRaw('abs(level - ?)', [$targetLevel])
+                ->orderBy('level')
+                ->limit(4)
+                ->get();
+        }
+
+        return $families
+            ->map(fn (Monster $base) => Monster::where('family_key', $base->family_key)
+                ->where('evolution_stage', '<=', $targetStage)
+                ->orderByDesc('evolution_stage')
+                ->first() ?? $base)
+            ->unique('id')
+            ->values();
     }
 
     private function randomClassForLevel(int $level): ?CharacterClass

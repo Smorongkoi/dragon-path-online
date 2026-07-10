@@ -389,6 +389,57 @@ class GameFlowTest extends TestCase
         );
     }
 
+    public function test_monster_evolves_by_level_milestone(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $levelTenPlayer = Player::create([
+            'browser_token' => 'monster-evolution-10-token',
+            'name' => 'Monster Evolution 10',
+            'level' => 10,
+            'class_id' => 'normal',
+            'exp' => 0,
+            'hp' => 100,
+            'max_hp' => 100,
+            'mp' => 30,
+            'max_mp' => 30,
+            'atk' => 10,
+            'def' => 5,
+            'inventory' => [],
+            'class_history' => ['normal'],
+        ]);
+
+        $levelTwentyPlayer = Player::create([
+            'browser_token' => 'monster-evolution-20-token',
+            'name' => 'Monster Evolution 20',
+            'level' => 20,
+            'class_id' => 'dragon_knight',
+            'exp' => 0,
+            'hp' => 408,
+            'max_hp' => 408,
+            'mp' => 126,
+            'max_mp' => 126,
+            'atk' => 102,
+            'def' => 68,
+            'inventory' => [],
+            'class_history' => ['normal', 'cavalry', 'dragon_knight'],
+        ]);
+
+        $levelTen = $this->postJson("/game/player/{$levelTenPlayer->id}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 1,
+        ])->assertOk();
+
+        $levelTwenty = $this->postJson("/game/player/{$levelTwentyPlayer->id}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 1,
+        ])->assertOk();
+
+        $this->assertSame(1, $levelTen->json('encounter.monsters.0.evolution_stage'));
+        $this->assertSame(2, $levelTwenty->json('encounter.monsters.0.evolution_stage'));
+        $this->assertNotEmpty($levelTwenty->json('encounter.monsters.0.family_key'));
+    }
+
     public function test_low_level_bot_only_uses_level_appropriate_class(): void
     {
         $this->seed(GameSeedSeeder::class);

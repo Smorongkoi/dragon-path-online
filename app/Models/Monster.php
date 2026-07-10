@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class Monster extends Model
 {
     protected $fillable = [
+        'family_key',
+        'evolution_stage',
+        'evolves_from_id',
         'name',
         'level',
         'hp',

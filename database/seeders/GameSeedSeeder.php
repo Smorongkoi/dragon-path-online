@@ -114,20 +114,58 @@ class GameSeedSeeder extends Seeder
             Skill::updateOrCreate(['id' => $skill['id']], $skill);
         }
 
-        $monsters = [
-            ['name' => 'สไลม์ป่า', 'level' => 1, 'hp' => 45, 'atk' => 7, 'def' => 1, 'exp_reward' => 55, 'sprite_key' => 'slime'],
-            ['name' => 'ค้างคาวถ้ำ', 'level' => 3, 'hp' => 70, 'atk' => 11, 'def' => 3, 'exp_reward' => 95, 'sprite_key' => 'bat'],
-            ['name' => 'หมาป่าหิวโซ', 'level' => 6, 'hp' => 120, 'atk' => 18, 'def' => 6, 'exp_reward' => 180, 'sprite_key' => 'wolf'],
-            ['name' => 'อัศวินโครงกระดูก', 'level' => 10, 'hp' => 210, 'atk' => 28, 'def' => 12, 'exp_reward' => 360, 'sprite_key' => 'skeleton'],
-            ['name' => 'โกเลมหิน', 'level' => 16, 'hp' => 360, 'atk' => 42, 'def' => 22, 'exp_reward' => 680, 'sprite_key' => 'golem'],
-            ['name' => 'ไวเวิร์นหนุ่ม', 'level' => 20, 'hp' => 480, 'atk' => 55, 'def' => 28, 'exp_reward' => 980, 'sprite_key' => 'wyvern'],
+        $monsterFamilies = [
+            'slime' => [
+                ['name' => 'สไลม์ป่า', 'level' => 1, 'hp' => 45, 'atk' => 7, 'def' => 1, 'exp_reward' => 55, 'sprite_key' => 'slime'],
+                ['name' => 'สไลม์ยักษ์', 'level' => 10, 'hp' => 190, 'atk' => 24, 'def' => 9, 'exp_reward' => 330, 'sprite_key' => 'slime'],
+                ['name' => 'สไลม์ซอมบี้', 'level' => 20, 'hp' => 430, 'atk' => 48, 'def' => 22, 'exp_reward' => 900, 'sprite_key' => 'slime'],
+                ['name' => 'สไลม์ซอมบี้ยักษ์', 'level' => 30, 'hp' => 780, 'atk' => 78, 'def' => 38, 'exp_reward' => 1700, 'sprite_key' => 'slime'],
+            ],
+            'bat' => [
+                ['name' => 'ค้างคาวถ้ำ', 'level' => 3, 'hp' => 70, 'atk' => 11, 'def' => 3, 'exp_reward' => 95, 'sprite_key' => 'bat'],
+                ['name' => 'ค้างคาวโลหิต', 'level' => 10, 'hp' => 170, 'atk' => 30, 'def' => 7, 'exp_reward' => 350, 'sprite_key' => 'bat'],
+                ['name' => 'ค้างคาวปีศาจ', 'level' => 20, 'hp' => 360, 'atk' => 62, 'def' => 16, 'exp_reward' => 940, 'sprite_key' => 'bat'],
+                ['name' => 'ราชาค้างคาวปีศาจ', 'level' => 30, 'hp' => 660, 'atk' => 96, 'def' => 28, 'exp_reward' => 1780, 'sprite_key' => 'bat'],
+            ],
+            'wolf' => [
+                ['name' => 'หมาป่าหิวโซ', 'level' => 6, 'hp' => 120, 'atk' => 18, 'def' => 6, 'exp_reward' => 180, 'sprite_key' => 'wolf'],
+                ['name' => 'หมาป่าเขี้ยวเหล็ก', 'level' => 10, 'hp' => 220, 'atk' => 34, 'def' => 11, 'exp_reward' => 390, 'sprite_key' => 'wolf'],
+                ['name' => 'หมาป่าเงาจันทร์', 'level' => 20, 'hp' => 470, 'atk' => 68, 'def' => 24, 'exp_reward' => 1040, 'sprite_key' => 'wolf'],
+                ['name' => 'จ่าฝูงหมาป่าเงาจันทร์', 'level' => 30, 'hp' => 840, 'atk' => 106, 'def' => 40, 'exp_reward' => 1980, 'sprite_key' => 'wolf'],
+            ],
+            'skeleton' => [
+                ['name' => 'โครงกระดูกเดินดิน', 'level' => 1, 'hp' => 60, 'atk' => 9, 'def' => 3, 'exp_reward' => 70, 'sprite_key' => 'skeleton'],
+                ['name' => 'อัศวินโครงกระดูก', 'level' => 10, 'hp' => 210, 'atk' => 28, 'def' => 12, 'exp_reward' => 360, 'sprite_key' => 'skeleton'],
+                ['name' => 'แม่ทัพโครงกระดูก', 'level' => 20, 'hp' => 500, 'atk' => 58, 'def' => 30, 'exp_reward' => 1050, 'sprite_key' => 'skeleton'],
+                ['name' => 'ราชาโครงกระดูก', 'level' => 30, 'hp' => 920, 'atk' => 92, 'def' => 52, 'exp_reward' => 2050, 'sprite_key' => 'skeleton'],
+            ],
+            'golem' => [
+                ['name' => 'โกเลมดิน', 'level' => 1, 'hp' => 80, 'atk' => 8, 'def' => 7, 'exp_reward' => 85, 'sprite_key' => 'golem'],
+                ['name' => 'โกเลมหิน', 'level' => 10, 'hp' => 260, 'atk' => 28, 'def' => 24, 'exp_reward' => 430, 'sprite_key' => 'golem'],
+                ['name' => 'โกเลมเหล็ก', 'level' => 20, 'hp' => 620, 'atk' => 56, 'def' => 48, 'exp_reward' => 1200, 'sprite_key' => 'golem'],
+                ['name' => 'โกเลมแกนภูเขาไฟ', 'level' => 30, 'hp' => 1120, 'atk' => 88, 'def' => 78, 'exp_reward' => 2300, 'sprite_key' => 'golem'],
+            ],
+            'wyvern' => [
+                ['name' => 'ไวเวิร์นเด็ก', 'level' => 1, 'hp' => 75, 'atk' => 13, 'def' => 4, 'exp_reward' => 100, 'sprite_key' => 'wyvern'],
+                ['name' => 'ไวเวิร์นวัยรุ่น', 'level' => 10, 'hp' => 240, 'atk' => 38, 'def' => 14, 'exp_reward' => 470, 'sprite_key' => 'wyvern'],
+                ['name' => 'ไวเวิร์นหนุ่ม', 'level' => 20, 'hp' => 480, 'atk' => 55, 'def' => 28, 'exp_reward' => 980, 'sprite_key' => 'wyvern'],
+                ['name' => 'ไวเวิร์นคลั่ง', 'level' => 30, 'hp' => 940, 'atk' => 118, 'def' => 44, 'exp_reward' => 2200, 'sprite_key' => 'wyvern'],
+            ],
         ];
 
-        foreach ($monsters as $monster) {
-            Monster::updateOrCreate(
-                ['name' => $monster['name'], 'level' => $monster['level']],
-                $monster
-            );
+        foreach ($monsterFamilies as $familyKey => $forms) {
+            $previous = null;
+
+            foreach ($forms as $stage => $monster) {
+                $previous = Monster::updateOrCreate(
+                    ['name' => $monster['name'], 'level' => $monster['level']],
+                    array_merge($monster, [
+                        'family_key' => $familyKey,
+                        'evolution_stage' => $stage,
+                        'evolves_from_id' => $previous?->id,
+                    ])
+                );
+            }
         }
     }
 }

@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'player.owner' => EnsurePlayerOwner::class,
         ]);
 
+        $middleware->validateCsrfTokens(except: [
+            'game/*',
+        ]);
+
         $middleware->trustProxies(
             at: '*',
             headers: Request::HEADER_X_FORWARDED_FOR

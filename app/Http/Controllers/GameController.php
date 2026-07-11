@@ -92,6 +92,22 @@ class GameController extends Controller
         return response()->json($this->worldPayload($player->fresh()));
     }
 
+    public function savePosition(Request $request, Player $player): JsonResponse
+    {
+        $data = $request->validate([
+            'world_x' => ['required', 'numeric', 'between:0,1'],
+            'world_y' => ['required', 'numeric', 'between:0,1'],
+        ]);
+
+        $player->forceFill([
+            'world_x' => round((float) $data['world_x'], 4),
+            'world_y' => round((float) $data['world_y'], 4),
+            'last_seen_at' => now(),
+        ])->save();
+
+        return response()->json($this->gamePayload($request, $player->fresh()));
+    }
+
     public function chat(Request $request, Player $player): JsonResponse
     {
         $data = $request->validate([
@@ -152,7 +168,7 @@ class GameController extends Controller
             app()->environment('testing') ? ($data['monster_element'] ?? null) : null
         );
 
-        $request->session()->put($this->encounterKey($player), $encounter);
+        $this->saveEncounter($request, $player, $encounter);
 
         return response()->json($this->gamePayload($request, $player->fresh()));
     }
@@ -167,10 +183,10 @@ class GameController extends Controller
             'auto_farm' => ['nullable', 'boolean'],
         ]);
 
-        $encounter = $request->session()->get($this->encounterKey($player));
+        $encounter = $this->loadEncounter($request, $player);
         if (! $encounter) {
             $encounter = $this->generateEncounter($player, $this->rollDice(), $this->rollDice());
-            $request->session()->put($this->encounterKey($player), $encounter);
+            $this->saveEncounter($request, $player, $encounter);
         }
 
         $skill = $this->classSkill($player, $data['skill_id'] ?? null);
@@ -294,9 +310,9 @@ class GameController extends Controller
         ])->save();
 
         if ($won || $playerDefeated) {
-            $request->session()->forget($this->encounterKey($player));
+            $this->clearEncounter($request, $player);
         } else {
-            $request->session()->put($this->encounterKey($player), $encounter);
+            $this->saveEncounter($request, $player, $encounter);
         }
 
         return response()->json([
@@ -597,7 +613,7 @@ class GameController extends Controller
     private function gamePayload(Request $request, Player $player): array
     {
         $skillClassIds = [$player->class_id];
-        $encounter = $request->session()->get($this->encounterKey($player));
+        $encounter = $this->loadEncounter($request, $player);
         $pvp = $request->session()->get($this->pvpKey($player)) ?? $player->pvp_match;
         if ($pvp) {
             $request->session()->put($this->pvpKey($player), $pvp);
@@ -670,6 +686,10 @@ class GameController extends Controller
                     'message' => $message->message,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ]),
+            'position' => $currentPlayer ? [
+                'x' => (float) ($currentPlayer->world_x ?? 0.38),
+                'y' => (float) ($currentPlayer->world_y ?? 0.52),
+            ] : null,
         ];
     }
 
@@ -1277,6 +1297,34 @@ class GameController extends Controller
     private function encounterKey(Player $player): string
     {
         return "encounter_{$player->id}";
+    }
+
+    private function loadEncounter(Request $request, Player $player): ?array
+    {
+        $encounter = $request->session()->get($this->encounterKey($player)) ?? $player->current_encounter;
+        if ($encounter) {
+            $request->session()->put($this->encounterKey($player), $encounter);
+        }
+
+        return $encounter;
+    }
+
+    private function saveEncounter(Request $request, Player $player, array $encounter): void
+    {
+        $request->session()->put($this->encounterKey($player), $encounter);
+        $player->forceFill([
+            'current_encounter' => $encounter,
+            'last_seen_at' => now(),
+        ])->save();
+    }
+
+    private function clearEncounter(Request $request, Player $player): void
+    {
+        $request->session()->forget($this->encounterKey($player));
+        $player->forceFill([
+            'current_encounter' => null,
+            'last_seen_at' => now(),
+        ])->save();
     }
 
     private function pvpKey(Player $player): string

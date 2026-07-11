@@ -34,6 +34,9 @@ class Player extends Model
         'last_seen_at',
         'pvp_queue_at',
         'pvp_match',
+        'current_encounter',
+        'world_x',
+        'world_y',
         'inventory',
         'class_history',
     ];
@@ -44,5 +47,8 @@ class Player extends Model
         'last_seen_at' => 'datetime',
         'pvp_queue_at' => 'datetime',
         'pvp_match' => 'array',
+        'current_encounter' => 'array',
+        'world_x' => 'float',
+        'world_y' => 'float',
     ];
 }

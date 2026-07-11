@@ -709,4 +709,41 @@ class GameFlowTest extends TestCase
         $fight->assertJsonPath('battle.won', true);
         $this->assertGreaterThan(0, Player::find($player->id)->exp);
     }
+
+    public function test_player_encounter_and_world_position_are_saved_to_database(): void
+    {
+        $this->seed(GameSeedSeeder::class);
+
+        $bootstrap = $this->postJson('/game/bootstrap', [
+            'browserToken' => 'database-save-token',
+            'name' => 'Database Save',
+        ])->assertOk();
+
+        $playerId = $bootstrap->json('player.id');
+
+        $this->patchJson("/game/player/{$playerId}/position", [
+            'world_x' => 0.61,
+            'world_y' => 0.74,
+        ])->assertOk()
+            ->assertJsonPath('world.position.x', 0.61)
+            ->assertJsonPath('world.position.y', 0.74);
+
+        $this->postJson("/game/player/{$playerId}/roll-encounter", [
+            'level_dice' => 4,
+            'count_dice' => 1,
+        ])->assertOk()
+            ->assertJsonPath('encounter.targetLevel', 1);
+
+        $saved = Player::find($playerId);
+        $this->assertSame(0.61, $saved->world_x);
+        $this->assertSame(0.74, $saved->world_y);
+        $this->assertNotEmpty($saved->current_encounter);
+
+        $this->postJson('/game/bootstrap', [
+            'browserToken' => 'database-save-token',
+        ])->assertOk()
+            ->assertJsonPath('world.position.x', 0.61)
+            ->assertJsonPath('world.position.y', 0.74)
+            ->assertJsonPath('encounter.targetLevel', 1);
+    }
 }

@@ -117,6 +117,68 @@ body {
     color: #fecaca;
 }
 
+.class-choice-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(2, 6, 23, 0.68);
+}
+
+.class-choice-panel {
+    width: min(680px, 100%);
+    padding: 18px;
+    border: 2px solid rgba(250, 204, 21, 0.78);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(12, 31, 58, 0.98));
+    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.48);
+}
+
+.class-choice-panel h2 {
+    margin: 0 0 6px;
+    font-size: 24px;
+}
+
+.class-choice-panel p {
+    margin: 0 0 14px;
+    color: #cbd5e1;
+}
+
+.class-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.class-choice-grid button {
+    display: grid;
+    gap: 8px;
+    min-height: 112px;
+    padding: 12px;
+    border: 1px solid rgba(125, 211, 252, 0.55);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.92);
+    color: #edf3ff;
+    text-align: left;
+}
+
+.class-choice-grid button:hover {
+    border-color: #facc15;
+    background: rgba(30, 64, 175, 0.9);
+}
+
+.class-choice-grid strong {
+    font-size: 18px;
+    color: #fef3c7;
+}
+
+.class-choice-grid span {
+    color: #bfdbfe;
+    line-height: 1.45;
+}
+
 body.guest .game-shell {
     visibility: hidden;
 }

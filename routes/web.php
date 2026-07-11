@@ -15,6 +15,7 @@ Route::get('/game/world', [GameController::class, 'world'])->middleware('throttl
 Route::middleware(['player.owner', 'throttle:120,1'])->group(function () {
     Route::patch('/game/player/{player}/rename', [GameController::class, 'rename'])->name('game.rename');
     Route::post('/game/player/{player}/heartbeat', [GameController::class, 'heartbeat'])->name('game.heartbeat');
+    Route::patch('/game/player/{player}/position', [GameController::class, 'savePosition'])->name('game.position');
     Route::post('/game/player/{player}/chat', [GameController::class, 'chat'])->name('game.chat');
     Route::patch('/game/player/{player}/element', [GameController::class, 'chooseElement'])->name('game.element');
     Route::post('/game/player/{player}/roll-encounter', [GameController::class, 'rollEncounter'])->name('game.roll-encounter');

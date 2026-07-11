@@ -25,6 +25,7 @@ const state = {
     mode: 'world',
     knownOnlineIds: new Set(),
     seenChatIds: new Set(),
+    classPromptKey: null,
     selectedOpponentId: null,
     pvpResolved: false,
     worldTimer: null,
@@ -47,6 +48,21 @@ if (Number.isNaN(state.worldPlayerX)) {
 }
 if (Number.isNaN(state.worldPlayerY)) {
     state.worldPlayerY = 0.52;
+}
+
+function applyWorldPosition(position = null) {
+    if (!position) return;
+
+    const x = Number(position.x);
+    const y = Number(position.y);
+    if (!Number.isNaN(x)) {
+        state.worldPlayerX = Math.max(0.24, Math.min(0.76, x));
+        localStorage.setItem('dragon-path-world-x', String(state.worldPlayerX));
+    }
+    if (!Number.isNaN(y)) {
+        state.worldPlayerY = Math.max(0.12, Math.min(0.95, y));
+        localStorage.setItem('dragon-path-world-y', String(state.worldPlayerY));
+    }
 }
 
 const els = {
@@ -1126,6 +1142,25 @@ BattleScene.prototype.moveWorldPlayer = function moveWorldPlayer(dx, dy = 0) {
     this.playWalkPose('player', dx || 1);
 };
 
+async function saveWorldPosition() {
+    const player = state.payload?.player;
+    if (!player) return;
+
+    try {
+        const payload = await request(`/game/player/${player.id}/position`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                world_x: state.worldPlayerX,
+                world_y: state.worldPlayerY,
+            }),
+        });
+        state.payload = payload;
+        applyWorldPosition(payload.world?.position);
+    } catch (error) {
+        log(`บันทึกตำแหน่งไม่สำเร็จ: ${error.message}`);
+    }
+}
+
 BattleScene.prototype.setOnlinePlayers = function setOnlinePlayers(players = []) {
     if (!this.onlineActors) return;
 
@@ -1295,6 +1330,7 @@ function setPayload(payload) {
     const onlinePlayers = payload.world?.onlinePlayers || [];
     state.selectedOpponentId = payload.pvp?.opponent?.id
         || (onlinePlayers.some((player) => player.id === state.selectedOpponentId) ? state.selectedOpponentId : null);
+    applyWorldPosition(payload.world?.position);
     rememberWorldState(payload.world || {}, false);
     render();
 }
@@ -1363,8 +1399,60 @@ function render() {
         state.scene?.setMonster(monsters.find((monster) => monster.id === state.selectedMonsterId) || monsters[0]);
     }
     renderClassEvolution(player, availableEvolutions, classEvolutionTree);
+    maybeShowClassChoicePrompt(player, availableEvolutions);
     els.modeRoot.dataset.mode = state.mode;
     state.scene?.setMode(state.mode);
+}
+
+function maybeShowClassChoicePrompt(player, availableEvolutions = []) {
+    if (!player || availableEvolutions.length === 0) {
+        state.classPromptKey = null;
+        closeClassChoicePrompt();
+        return;
+    }
+
+    const key = `${player.id}:${player.level}:${player.class_id}:${availableEvolutions.map((choice) => choice.id).join('|')}`;
+    if (state.classPromptKey === key || document.querySelector('.class-choice-modal')) {
+        return;
+    }
+
+    state.classPromptKey = key;
+    showClassChoicePrompt(player, availableEvolutions);
+}
+
+function closeClassChoicePrompt() {
+    document.querySelector('.class-choice-modal')?.remove();
+}
+
+function showClassChoicePrompt(player, choices = []) {
+    closeClassChoicePrompt();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'class-choice-modal';
+    const panel = document.createElement('div');
+    panel.className = 'class-choice-panel';
+
+    const title = document.createElement('h2');
+    title.textContent = `เลเวล ${player.level}: เลือกคลาสใหม่`;
+    const note = document.createElement('p');
+    note.textContent = 'เลือกได้ 1 เส้นทางเท่านั้น หลังเลือกแล้วคลาสอื่นในช่วงนี้จะล็อก';
+
+    const list = document.createElement('div');
+    list.className = 'class-choice-grid';
+    choices.forEach((choice) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.innerHTML = `<strong>${escapeHtml(choice.name)}</strong><span>${escapeHtml(choice.ability_name || 'ปลดล็อกสายใหม่')}</span>`;
+        button.addEventListener('click', () => {
+            closeClassChoicePrompt();
+            changeClass(choice.id);
+        });
+        list.appendChild(button);
+    });
+
+    panel.append(title, note, list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
 }
 
 function renderClassEvolution(player, availableEvolutions = [], tree = null) {
@@ -2130,6 +2218,7 @@ async function walkWorld(dx, dy) {
     try {
         playSfx('click');
         state.scene?.moveWorldPlayer(dx, dy);
+        saveWorldPosition();
 
         if (Math.random() < 0.28) {
             log('เดินสำรวจแล้วเจอมอนสเตอร์!');
@@ -2262,6 +2351,8 @@ async function changeClass(classId) {
             body: JSON.stringify({ class_id: classId }),
         });
         setPayload(payload);
+        state.classPromptKey = null;
+        closeClassChoicePrompt();
         log(`เปลี่ยนคลาสเป็น ${payload.class.name} สำเร็จ`);
     } catch (error) {
         log(error.message);
